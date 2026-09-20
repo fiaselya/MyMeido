@@ -1,0 +1,14 @@
+{
+  "modmenu.nameTranslation.mymeido": "我的女仆",
+  "modmenu.descriptionTranslation.mymeido": "在 Minecraft 里养你自己的女仆 —— 会说话、会记事、会过日子。",
+  "entity.minecraft.meido": "女仆",
+  "entity.mymeido.meido": "女仆",
+  "item.mymeido.command_alarm": "指令闹钟",
+  "item.mymeido.meido_contract": "女仆契约",
+  "itemgroup.mymeido": "我的女仆",
+  "commands.mymeido.no_meido": "附近 16 格内没有女仆",
+  "commands.mymeido.no_player": "这条指令需要由玩家执行",
+  "key.category.mymeido": "我的女仆",
+  "key.mymeido.chat": "和女仆说话",
+  "key.mymeido.history": "对话记录"
+}

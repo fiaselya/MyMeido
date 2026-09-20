@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "mymeido",
+  "version": "${version}",
+  "name": "MyMeido",
+  "description": "在 Minecraft 里养一个属于你自己的女仆：会干活、会打架、会回家过日子，可以自定义皮肤；接上任意 OpenAI 兼容的模型之后，她还会跟你聊天、记得住你说过的话、并在你身边待久了主动来找你搭话。",
+  "authors": [
+    "绯色"
+  ],
+  "contact": {
+    "homepage": "https://modrinth.com/mod/mymeido",
+    "sources": "https://github.com/fiaselya/MyMeido",
+    "issues": "https://github.com/fiaselya/MyMeido/issues"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.mymeido.MyMeido"
+    ],
+    "client": [
+      "com.mymeido.client.MyMeidoClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

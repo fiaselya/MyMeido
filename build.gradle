@@ -1,0 +1,96 @@
+plugins {
+    id 'fabric-loom' version '1.11.8'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+// 客户端 / 公共端代码分离。
+// 为什么需要：NPC 是「真实实体」，必须在服务端（单人游戏的内置服务端）也注册，
+// 所以 fabric.mod.json 的 environment 用 "*"；而渲染器、皮肤、粒子这类
+// 只存在于客户端的类，放在 src/client 里，服务端不会去加载它们。
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "mymeido" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = "UTF-8"
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+// ---------------------------------------------------------------------------
+// 一条命令构建 + 部署，免得「build 完忘了拷 jar」——
+// 那种症状是「改了代码进游戏发现没变」，然后去 debug 一个根本不存在的问题。
+//
+//   ./gradlew deployMod
+//   ./gradlew deployMod -PmodsDir="/path/to/another/.minecraft/mods"
+//
+// 默认指向 macOS 官方启动器的游戏目录（HMCL 也认这个目录）。
+// ---------------------------------------------------------------------------
+tasks.register("deployMod") {
+    group = "mymeido"
+    description = "构建并把 remap 后的 jar 拷进 <游戏目录>/mods/"
+
+    dependsOn "build"
+
+    doLast {
+        def modsDir = providers.gradleProperty("modsDir").map { file(it) }.getOrElse(
+                file("${System.getProperty("user.home")}/Library/Application Support/minecraft/mods"))
+
+        if (!modsDir.isDirectory()) {
+            throw new GradleException("mods 目录不存在：${modsDir}（可用 -PmodsDir=<路径> 指定）")
+        }
+
+        // ★ 必须拷 remap 之后的生产 jar：Loom 的 remapJar 直接覆盖 build/libs/<name>-<ver>.jar。
+        //   别拷 -sources.jar / -dev.jar，那两个进了游戏会炸。
+        def jar = layout.buildDirectory
+                .file("libs/${base.archivesName.get()}-${project.version}.jar").get().asFile
+        if (!jar.isFile()) {
+            throw new GradleException("找不到构建产物：${jar}")
+        }
+
+        // 先清旧 jar：版本号一变就会残留两个，游戏会报 mod id 重复。
+        delete fileTree(modsDir) { include "${base.archivesName.get()}-*.jar" }
+        copy {
+            from jar
+            into modsDir
+        }
+        logger.lifecycle("已部署 ${jar.name}（${jar.length()} B）-> ${modsDir}")
+    }
+}

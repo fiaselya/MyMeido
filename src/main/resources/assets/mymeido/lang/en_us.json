@@ -1,0 +1,14 @@
+{
+  "modmenu.nameTranslation.mymeido": "MyMeido",
+  "modmenu.descriptionTranslation.mymeido": "Raise your own maid in Minecraft.",
+  "entity.minecraft.meido": "Maid",
+  "entity.mymeido.meido": "Maid",
+  "item.mymeido.command_alarm": "Command Alarm",
+  "item.mymeido.meido_contract": "Maid Contract",
+  "itemgroup.mymeido": "MyMeido",
+  "commands.mymeido.no_meido": "No maid within 16 blocks",
+  "commands.mymeido.no_player": "This command must be run by a player",
+  "key.category.mymeido": "MyMeido",
+  "key.mymeido.chat": "Talk to maid",
+  "key.mymeido.history": "Dialogue history"
+}
