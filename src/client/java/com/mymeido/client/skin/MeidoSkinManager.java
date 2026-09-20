@@ -4,19 +4,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Locale;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Stream;
 
 import com.mymeido.MeidoConst;
 import com.mymeido.MyMeido;
 import com.mymeido.entity.MeidoSkin;
+import com.mymeido.entity.MeidoSkinRegistry;
 
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
@@ -25,40 +22,40 @@ import net.minecraft.resource.ResourceType;
 import net.minecraft.util.Identifier;
 
 /**
- * 皮肤池：把「皮肤枚举」翻译成「贴图 Identifier」。
+ * 皮肤池：把「皮肤」翻译成「贴图 Identifier」。
  *
  * <p>贴图来源只有一处：{@code .minecraft/config/mymeido/skins/} 里的 png，
- * 按 {@link MeidoSkin#fileName()} 取。
+ * 按 {@link MeidoSkin#fileName()} 取 —— 而那个文件名正是
+ * {@link MeidoSkinRegistry} 扫目录扫出来的，所以「有几张图就有几个角色，
+ * 加图不用改代码」这条链是通的。
  *
  * <p>读盘 + 建纹理<b>必须缓存</b> —— {@code getTexture} 每帧都会被调一次，
  * 不缓存就是每帧读一次磁盘、再建一次纹理，几秒钟就能把显存吃光。
  * 解析失败也照样缓存，否则会退化成「每帧刷一行报错」。
  *
- * <p>F3+T 重载资源会清掉缓存，所以换图不用重启游戏。
+ * <p>按 {@code F3+T} 重载资源会<b>重扫目录 + 清缓存</b>，所以换图 / 加图都不用重启游戏。
  */
 public final class MeidoSkinManager {
-
-    /** 皮肤目录：{@code .minecraft/config/mymeido/skins/} */
-    private static final Path SKIN_DIR =
-            FabricLoader.getInstance().getConfigDir().resolve("mymeido").resolve("skins");
 
     /** 找不到自家贴图时的兜底：原版 Steve 一定在游戏本体里，缺不了。 */
     private static final Identifier FALLBACK =
             Identifier.ofVanilla("textures/entity/player/wide/steve.png");
 
-    private static final Map<MeidoSkin, Identifier> CACHE = new EnumMap<>(MeidoSkin.class);
+    /**
+     * key = 皮肤 id。
+     *
+     * <p>用 {@code String} 而不是 {@code MeidoSkin}：皮肤现在不是枚举了
+     * （{@code EnumMap} 用不了），而且这张表活在每帧都会被查一次的路径上，
+     * 用不可变的 id 字符串当键最省事。
+     */
+    private static final Map<String, Identifier> CACHE = new HashMap<>();
 
     private MeidoSkinManager() {
     }
 
     public static void init() {
-        // 目录先建出来，玩家才知道该往哪儿放图。
-        try {
-            Files.createDirectories(SKIN_DIR);
-        } catch (IOException e) {
-            MyMeido.LOGGER.warn("[mymeido] 无法创建皮肤目录 {}：{}", SKIN_DIR, e.toString());
-        }
-
+        // 目录的创建与清单的扫描都在 MeidoSkinRegistry 里（公共源集），
+        // 它在 MyMeido#onInitialize 里已经跑过一次 —— 客户端这里不重复扫。
         ResourceManagerHelper.get(ResourceType.CLIENT_RESOURCES).registerReloadListener(
                 new SimpleSynchronousResourceReloadListener() {
                     @Override
@@ -68,6 +65,10 @@ public final class MeidoSkinManager {
 
                     @Override
                     public void reload(ResourceManager manager) {
+                        // ★ 重扫目录也放在这里：F3+T 是玩家「刚往 skins 里丢了一张图，
+                        //   怎么让它立刻生效」最自然的动作。只清贴图缓存而不重扫清单的话，
+                        //   新角色还是不会出现在选人菜单里（菜单读的是注册表）。
+                        MeidoSkinRegistry.reload();
                         CACHE.clear();
                     }
                 });
@@ -75,12 +76,13 @@ public final class MeidoSkinManager {
 
     /** 渲染器唯一入口。必须足够快 —— 它每帧都会被调用。 */
     public static Identifier textureFor(MeidoSkin skin) {
-        Identifier cached = CACHE.get(skin);
+        String key = skin.getId();
+        Identifier cached = CACHE.get(key);
         if (cached != null) {
             return cached;
         }
         Identifier resolved = load(skin);
-        CACHE.put(skin, resolved);
+        CACHE.put(key, resolved);
         return resolved;
     }
 
@@ -88,13 +90,12 @@ public final class MeidoSkinManager {
         Path file = find(skin);
         if (file == null) {
             MyMeido.LOGGER.warn("[mymeido] 皮肤目录里找不到 {}，回落原版 Steve。目录：{}",
-                    skin.fileName(), SKIN_DIR);
+                    skin.fileName(), MeidoSkinRegistry.dir());
             return FALLBACK;
         }
         try (InputStream in = Files.newInputStream(file)) {
             NativeImage image = NativeImage.read(in);
-            // 贴图 id 直接用皮肤 id：稳定、唯一，同一张图重复加载也不会越堆越多。
-            Identifier id = MeidoConst.id("skins/" + skin.getId());
+            Identifier id = MeidoConst.id(texturePath(skin));
             MinecraftClient.getInstance().getTextureManager()
                     .registerTexture(id, new NativeImageBackedTexture(image));
             MyMeido.LOGGER.info("[mymeido] 已加载皮肤 {}：{} -> {}",
@@ -108,34 +109,51 @@ public final class MeidoSkinManager {
     }
 
     /**
-     * 先按原名精确找；找不到再按「小写 + 去掉空格/下划线/连字符」比对一次，
-     * 这样玩家重命名或改写大小写之后也还能用。
+     * 贴图资源路径 —— 必须能当 {@link Identifier} 的 path 用。
+     *
+     * <p>★ 皮肤 id 现在来自玩家自己起的文件名，可能是中文（{@code 小鸟游星野.png}），
+     * 而 {@code Identifier} 只认 {@code [a-z0-9_.-/]}，直接拿 id 拼路径会抛
+     * {@code InvalidIdentifierException}（而且是在渲染线程上抛）。
+     * 所以：非法字符一律换成下划线，再补一段 id 的哈希 ——
+     * 光净化会撞名（两个中文角色都变成一串下划线），补哈希才唯一。
+     */
+    private static String texturePath(MeidoSkin skin) {
+        String id = skin.getId();
+        StringBuilder safe = new StringBuilder(id.length() + 9);
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+                    || c == '_' || c == '.' || c == '-';
+            safe.append(ok ? c : '_');
+        }
+        return "skins/" + safe + "-" + Integer.toHexString(id.hashCode());
+    }
+
+    /**
+     * 找图：先按注册表里记的真实文件名拿（精确路径，常规情况一步到位）；
+     * 找不到再把整个目录扫一遍做一次「忽略大小写 / 空格 / 下划线」的宽容匹配
+     * —— 这样玩家把 {@code Sakurai Momoka.png} 改名成 {@code sakurai_momoka.png}
+     * 之后仍然能用（虽然注册表重扫后本来就会认出来，这里是兜底）。
      */
     private static Path find(MeidoSkin skin) {
-        Path exact = SKIN_DIR.resolve(skin.fileName());
+        Path dir = MeidoSkinRegistry.dir();
+        Path exact = dir.resolve(skin.fileName());
         if (Files.isRegularFile(exact)) {
             return exact;
         }
 
-        String want = normalize(skin.fileName());
-        try (Stream<Path> stream = Files.list(SKIN_DIR)) {
-            List<Path> hits = stream
-                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
-                    .filter(path -> normalize(path.getFileName().toString()).equals(want))
-                    .toList();
-            return hits.isEmpty() ? null : hits.get(0);
+        String want = skin.getId();
+        try (var stream = Files.list(dir)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().toLowerCase(java.util.Locale.ROOT)
+                            .endsWith(".png"))
+                    .filter(path -> MeidoSkin.canonicalId(path.getFileName().toString()).equals(want))
+                    .findFirst()
+                    .orElse(null);
         } catch (IOException e) {
             // 目录不存在 / 不可读，等同于「没找到」。
             return null;
         }
-    }
-
-    /** {@code "Sakurai Momoka.png"} -> {@code "sakuramomoka"} */
-    private static String normalize(String fileName) {
-        String name = fileName.toLowerCase(Locale.ROOT);
-        if (name.endsWith(".png")) {
-            name = name.substring(0, name.length() - 4);
-        }
-        return name.replace(" ", "").replace("_", "").replace("-", "");
     }
 }

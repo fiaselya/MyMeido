@@ -96,17 +96,31 @@ api_extra_headers=
 
 ## 皮肤（重要）
 
-**本 mod 不附带任何角色贴图。** 皮肤池是固定的 4 个槽位，贴图请自己放进
-`.minecraft/config/mymeido/skins/`，文件名对应：
+**本 mod 不附带任何角色贴图。** 角色是**从文件夹里长出来**的：
+**一张 png = 一个角色 = 选人菜单里的一个编号，数量不设上限。**
+把图丢进 `.minecraft/config/mymeido/skins/` 就行，**文件名就是角色名**：
 
-| 槽位 | 文件名 |
-|---|---|
-| 1 | `hoshino.png` |
-| 2 | `rikka.png` |
-| 3 | `kotone.png` |
-| 4 | `Sakurai Momoka.png` |
+| 你放进目录的文件 | 菜单里显示 | 角色 id（存进存档的那个） |
+|---|---|---|
+| `yuuka.png` | `1) yuuka` | `yuuka` |
+| `小鸟游星野.png` | `2) 小鸟游星野` | `小鸟游星野` |
+| `Sakurai Momoka.png` | `3) Sakurai Momoka` | `momoka` ※ |
 
-只认文件名开头（忽略大小写、空格、下划线），放不下就回落原版皮肤。
+※ 老版本（0.1.0）里这位角色的 id 就是 `momoka`，所以**老存档和老人设卡继续有效**，
+不会被改名成别的。以后新增的角色一律「id = 文件名去掉空格/下划线/大小写」。
+
+- 编号按**文件名排序**自动生成，放几张就有几个可选；
+- **加图 / 换图不用重启游戏**：按 `F3+T` 重载资源即可（会重扫目录 + 重读贴图）；
+- 认 id 时忽略大小写、空格、下划线 —— `Sakurai Momoka.png` 与 `sakurai_momoka.png`
+  会认成同一个角色（不会凭空多出一个）；
+- 某张图找不到或读不出来 → 那只女仆**回落原版 Steve**，但她的角色 id 不变
+  （所以删图不会让老存档里的女仆「换脸」）；
+- **一张图都没放**时，菜单会给 4 个内置占位槽位（hoshino / rikka / kotone / momoka），
+  贴图是原版 Steve —— 这样新装玩家右键契约不会毫无反应。放图进去它们就被顶掉了。
+
+指令 `/mymeido skins` 可以看现在认到的是哪几个文件、目录在哪；
+`/mymeido skins reload` 强制重扫一遍（同时补齐新角色的人设卡模板）。
+
 皮肤的版权归原作者，请自行确认你有使用权 —— 这也是本 mod 不打包贴图的原因。
 
 ## 按键
@@ -125,6 +139,7 @@ api_extra_headers=
 /mymeido alarm              用闹钟找她
 /mymeido name <名字>        改名字
 /mymeido skin <皮肤>        换皮肤
+/mymeido skins [reload]     看皮肤库认到哪几个文件 / 重扫皮肤目录
 /mymeido favor              看好感度档位
 /mymeido chat <话>          直接跟她说一句（不用打字框）
 /mymeido say <话>           让她念一句（不走模型）

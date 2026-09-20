@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.mymeido.MyMeido;
 import com.mymeido.entity.MeidoEntity;
 import com.mymeido.entity.MeidoSkin;
+import com.mymeido.entity.MeidoSkinRegistry;
 import com.mymeido.entity.MeidoSpawn;
 
 import net.minecraft.entity.player.PlayerEntity;
@@ -136,13 +137,14 @@ public class MeidoContractItem extends Item {
      * 一定会出现「文档/指令里说的编号」和「游戏里看到的编号」不一致。
      */
     public static List<Text> menuLines() {
-        MeidoSkin[] skins = MeidoSkin.values();
-        List<Text> lines = new ArrayList<>(skins.length + 2);
-        lines.add(Text.literal("[mymeido] 选一位女仆创造出来（皮肤库共 " + skins.length + " 位）："));
+        List<MeidoSkin> skins = MeidoSkinRegistry.all();
+        List<Text> lines = new ArrayList<>(skins.size() + 3);
+        lines.add(Text.literal("[mymeido] 选一位女仆创造出来（皮肤库共 " + skins.size()
+                + " 位，一张 png = 一个角色）："));
 
-        for (int i = 0; i < skins.length; i++) {
+        for (int i = 0; i < skins.size(); i++) {
             int number = i + 1;
-            MeidoSkin skin = skins[i];
+            MeidoSkin skin = skins.get(i);
             // 点一下就自动把编号填进聊天框（SUGGEST_COMMAND）—— 比让玩家手打一个字符友好，
             // 而且不需要客户端代码：点击事件是原版就渲染并处理的东西。
             MutableText name = Text.literal(label(skin)).setStyle(Style.EMPTY
@@ -150,6 +152,14 @@ public class MeidoContractItem extends Item {
                     .withClickEvent(new ClickEvent(
                             ClickEvent.Action.SUGGEST_COMMAND, String.valueOf(number))));
             lines.add(Text.literal("  " + number + ") ").formatted(Formatting.GRAY).append(name));
+        }
+
+        // ★ 皮肤目录里一张图都没有时，上面列的是内置占位槽位 —— 必须说出来。
+        //   不说的话玩家会以为「这 4 个就是 mod 自带的角色」，然后抱怨贴图是 Steve。
+        if (MeidoSkinRegistry.fileCount() == 0) {
+            lines.add(Text.literal("  注意：skins 文件夹里还没有 png，上面是内置的占位槽位"
+                    + "（贴图是原版 Steve）。放几张图进去，你的角色就在这儿了 → "
+                    + MeidoSkinRegistry.dir()).formatted(Formatting.YELLOW));
         }
 
         lines.add(Text.literal("  输入编号创造；输入「取消」放弃。"
@@ -201,40 +211,55 @@ public class MeidoContractItem extends Item {
             return true;
         }
 
-        MeidoSkin[] skins = MeidoSkin.values();
-        Integer pick = parseNumber(line, skins.length);
+        List<MeidoSkin> skins = MeidoSkinRegistry.all();
+        Integer pick = parseNumber(line, skins.size());
         if (pick == null) {
             // 不认识的内容不抢着吞掉 —— 只轻提示一句，让正常聊天照常走。
-            player.sendMessage(Text.literal("[mymeido] 还没选好：输入 1~" + skins.length
+            player.sendMessage(Text.literal("[mymeido] 还没选好：输入 1~" + skins.size()
                     + " 选角色，或输入「取消」。").formatted(Formatting.YELLOW), true);
             return false;
         }
 
         PENDING.remove(id);
-        create(player, skins[pick - 1]);
+        create(player, skins.get(pick - 1));
         return true;
     }
 
     /**
-     * 认「一个字符的数字」。
+     * 认「裸数字」编号。
+     *
+     * <p>★ 2026-09-21：从「只认一位数」改成<b>多位也行</b> —— 皮肤库现在跟着 skins
+     * 文件夹走、数量不设上限，只认一位数的话第 10 个角色就永远选不到。
+     * 多位数字不会被误吃：超出编号范围的一律返回 {@code null} 当普通聊天放行。
      *
      * <p>顺手把全角数字（{@code １}，中文输入法下最常见）折成半角 ——
      * 玩家当然会一直开着中文输入法来打这个数字，不折的话他会觉得「打了没反应」。
      */
     private static Integer parseNumber(String line, int max) {
         String s = line.strip();
-        if (s.length() != 1) {
+        // 超过 3 位的直接不当编号：皮肤库不可能有 1000 个角色，
+        // 但「2024」这种正常聊天内容却随时可能出现，别把它吃掉。
+        if (s.isEmpty() || s.length() > 3) {
             return null;
         }
-        char c = s.charAt(0);
-        if (c >= '０' && c <= '９') {
-            c = (char) (c - '０' + '0');
+        StringBuilder digits = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '０' && c <= '９') {
+                c = (char) (c - '０' + '0');
+            }
+            if (c < '0' || c > '9') {
+                return null;    // 混了非数字 → 不是编号
+            }
+            digits.append(c);
         }
-        if (c < '1' || c > '9') {
+        int n;
+        try {
+            n = Integer.parseInt(digits.toString());
+        } catch (NumberFormatException e) {
             return null;
         }
-        int n = c - '0';
-        return n <= max ? n : null;
+        return (n >= 1 && n <= max) ? n : null;
     }
 
     // ------------------------------------------------------------------
@@ -346,7 +371,9 @@ public class MeidoContractItem extends Item {
     public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType type) {
         super.appendTooltip(stack, context, tooltip, type);
         tooltip.add(Text.literal("右键（空气或地面）：在聊天栏列出皮肤库里的角色，编号 1~"
-                + MeidoSkin.values().length).formatted(Formatting.GRAY));
+                + MeidoSkinRegistry.size()).formatted(Formatting.GRAY));
+        tooltip.add(Text.literal("角色 = config/mymeido/skins/ 里的一张 png，文件名就是角色名")
+                .formatted(Formatting.GRAY));
         tooltip.add(Text.literal("然后在聊天栏输入编号，她就出现在你脚下").formatted(Formatting.GRAY));
         tooltip.add(Text.literal("用掉就没了（一份只创造一位）；合成：下界之星 + 8 张纸")
                 .formatted(Formatting.DARK_GRAY));

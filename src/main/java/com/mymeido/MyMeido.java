@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import com.mymeido.ai.MeidoAiConfig;
 import com.mymeido.ai.MeidoPersona;
 import com.mymeido.command.MeidoCommand;
-import com.mymeido.entity.MeidoSkin;
+import com.mymeido.entity.MeidoSkinRegistry;
 import com.mymeido.net.MeidoChatPayload;
 import com.mymeido.net.MeidoHistoryRequestPayload;
 import com.mymeido.item.MeidoItems;
@@ -42,7 +42,11 @@ public class MyMeido implements ModInitializer {
         //   3) 网络包注册与实体、指令一样，都是「两端都要有」的东西。
         MeidoItems.register();
         MeidoAiConfig.load();          // 对话配置（chat/api.txt；没有就生成带中文说明的模板）
-        MeidoPersona.loadAll(MeidoSkin.ids()); // 人设卡（config/mymeido/personas/<skinId>.txt；没有就生成模板）
+        // ★ 皮肤库必须比人设卡先加载：人设卡是按「现在有几个角色」逐个补模板的，
+        //   而角色数量正是扫 skins 目录扫出来的（一张 png = 一个角色，数量不设上限）。
+        MeidoSkinRegistry.reload();
+        // 人设卡（config/mymeido/personas/<skinId>.txt；没有就生成模板）
+        MeidoPersona.loadAll(MeidoSkinRegistry.ids());
         MeidoModeRegistry.load();
         MyMeidoEntities.register();
         MeidoModeSelectPayload.register();

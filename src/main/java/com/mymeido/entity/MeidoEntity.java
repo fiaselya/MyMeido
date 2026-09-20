@@ -514,7 +514,9 @@ public class MeidoEntity extends PathAwareEntity {
     @Override
     protected void initDataTracker(DataTracker.Builder builder) {
         super.initDataTracker(builder);
-        builder.add(SKIN, MeidoSkin.DEFAULT.getId());
+        // 默认皮肤 = 皮肤库里的第一位（不是写死的 hoshino）：
+        // 玩家只放了一张 yuuka.png 时，新女仆就该是 yuuka，而不是一张找不到图的 hoshino。
+        builder.add(SKIN, MeidoSkinRegistry.defaultSkin().getId());
         builder.add(EMOTION, MeidoEmotion.NEUTRAL.ordinal());
         builder.add(EMOTION_LEFT, 0);
         builder.add(COLOR, MeidoColor.PINK.ordinal());

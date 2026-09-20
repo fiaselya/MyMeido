@@ -22,6 +22,7 @@ import com.mymeido.entity.MeidoEntity;
 import com.mymeido.entity.MeidoInventory;
 import com.mymeido.entity.MeidoMission;
 import com.mymeido.entity.MeidoSkin;
+import com.mymeido.entity.MeidoSkinRegistry;
 import com.mymeido.entity.MeidoSpawn;
 import com.mymeido.item.CommandAlarmItem;
 import com.mymeido.item.MeidoContractItem;
@@ -109,7 +110,7 @@ public final class MeidoCommand {
                         .requires(source -> source.hasPermissionLevel(2))
 
                         .then(CommandManager.literal("summon")
-                                .executes(ctx -> summon(ctx.getSource(), MeidoSkin.DEFAULT))
+                                .executes(ctx -> summon(ctx.getSource(), MeidoSkinRegistry.defaultSkin()))
                                 .then(CommandManager.argument("skin", StringArgumentType.word())
                                         .suggests(MeidoCommand::suggestSkins)
                                         .executes(ctx -> summon(ctx.getSource(),
@@ -253,7 +254,10 @@ public final class MeidoCommand {
                         .then(CommandManager.literal("aireload")
                                 .executes(ctx -> {
                                     MeidoAiConfig.load();
-                                    MeidoPersona.loadAll(MeidoSkin.ids());
+                                    // 顺手重扫皮肤目录：往 skins/ 里丢了新角色之后，
+                                    // 一条 aireload 就能把它的初始人设卡补出来。
+                                    MeidoSkinRegistry.reload();
+                                    MeidoPersona.loadAll(MeidoSkinRegistry.ids());
                                     MeidoAi.clearCooldowns();
                                     feedback(ctx.getSource(), "对话配置与人设卡已重载（失败冷却也清了）");
                                     return aiStatus(ctx.getSource());
@@ -302,7 +306,22 @@ public final class MeidoCommand {
                                     feedback(ctx.getSource(), "模式清单已重新加载：" + count + " 条（"
                                             + MeidoModeRegistry.configFile() + "）");
                                     return MeidoModeRegistry.ids().isEmpty() ? 0 : 1;
-                                })))
+                                }))
+
+                        // 看皮肤库 / 重扫皮肤目录。
+                        // ★ 独立于 aireload：那个是「对话后端」的事，这个纯粹是「我往 skins
+                        //   里丢了一张图，怎么让它立刻被认出来」—— 最常见的问题是
+                        //   「图放了但游戏里没反应」，这条指令就是给那种情况准备的
+                        //   （渲染侧还要按 F3+T 重载一次资源才会重新读盘）。
+                        .then(CommandManager.literal("skins")
+                                .executes(ctx -> showSkins(ctx.getSource()))
+                                .then(CommandManager.literal("reload")
+                                        .executes(ctx -> {
+                                            MeidoSkinRegistry.reload();
+                                            MeidoPersona.loadAll(MeidoSkinRegistry.ids());
+                                            feedback(ctx.getSource(), "皮肤目录已重扫，人设卡也补齐了");
+                                            return showSkins(ctx.getSource());
+                                        }))))
                 );
     }
 
@@ -827,13 +846,35 @@ public final class MeidoCommand {
         source.sendFeedback(() -> Text.literal("[mymeido] " + message), false);
     }
 
+    /**
+     * 把皮肤库整个念出来：共几位、分别是哪个文件、目录在哪。
+     *
+     * <p>「我往 skins 里丢了图，为什么游戏里还是那 4 个」是这个玩法最容易卡住的地方，
+     * 这条指令就是为了让玩家一眼看出<b>认到的到底是哪几个文件</b>
+     * （规范化后的 id 会跟文件名不一样，比如 {@code Sakurai Momoka.png} → {@code momoka}）。
+     */
+    private static int showSkins(ServerCommandSource source) {
+        List<MeidoSkin> skins = MeidoSkinRegistry.all();
+        int files = MeidoSkinRegistry.fileCount();
+        feedback(source, "皮肤库共 " + skins.size() + " 位角色"
+                + (files == 0
+                        ? "（皮肤目录里还没有 png，这是内置的占位槽位，贴图回落原版 Steve）"
+                        : "（皮肤目录里有 " + files + " 张 png）"));
+        for (int i = 0; i < skins.size(); i++) {
+            MeidoSkin skin = skins.get(i);
+            feedback(source, "  " + (i + 1) + ") " + skin.getId() + "   ←   " + skin.fileName());
+        }
+        feedback(source, "目录：" + MeidoSkinRegistry.dir());
+        return skins.size();
+    }
+
     // ------------------------------------------------------------------
     // 补全
     // ------------------------------------------------------------------
 
     private static CompletableFuture<Suggestions> suggestSkins(
             CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
-        return CommandSource.suggestMatching(MeidoSkin.ids(), builder);
+        return CommandSource.suggestMatching(MeidoSkinRegistry.ids(), builder);
     }
 
     private static CompletableFuture<Suggestions> suggestColors(
