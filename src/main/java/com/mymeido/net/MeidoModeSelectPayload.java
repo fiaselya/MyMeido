@@ -1,6 +1,7 @@
 package com.mymeido.net;
 
 import com.mymeido.MeidoConst;
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 import com.mymeido.item.CommandAlarmItem;
 import com.mymeido.item.MeidoItems;
@@ -86,9 +87,11 @@ public record MeidoModeSelectPayload(String modeId) implements CustomPayload {
         // 客户端发来的一切都不可信，先校验。
         if (!MeidoModeRegistry.isKnown(modeId)) {
             // 多半是联机时两边的 modes.json 不一样 —— 说清楚，别让人以为是 mod 坏了。
-            player.sendMessage(Text.literal("[mymeido] 服务端不认识模式「" + modeId
-                    + "」，可能是两边的 modes.json 不一致"), false);
-            MyMeido.LOGGER.warn("[mymeido] 玩家 {} 选了服务端不认识的模式：{}",
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 服务端不认识模式「" + modeId
+                    + "」，可能是两边的 modes.json 不一致",
+                    "[mymeido] The server does not recognize mode '" + modeId
+                    + "', the two sides' modes.json may differ")), false);
+            MyMeido.LOGGER.warn("[mymeido] player {} selected a mode unknown to the server: {}",
                     player.getName().getString(), modeId);
             return;
         }
@@ -96,7 +99,8 @@ public record MeidoModeSelectPayload(String modeId) implements CustomPayload {
         ItemStack alarm = CommandAlarmItem.findAlarm(player);
         if (alarm == null) {
             // 界面开着的时候把闹钟扔了 / 换手了？那就什么都不做。
-            player.sendMessage(Text.literal("[mymeido] 你手上没有指令闹钟"), true);
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 你手上没有指令闹钟",
+                    "[mymeido] You have no command alarm in hand")), true);
             return;
         }
 
@@ -110,8 +114,9 @@ public record MeidoModeSelectPayload(String modeId) implements CustomPayload {
 
         MeidoModeDef def = MeidoModeRegistry.byId(modeId).orElse(null);
         if (def != null) {
-            player.sendMessage(Text.literal("[mymeido] 已选择：" + def.name()
-                    + "（" + def.hint() + "）"), true);
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 已选择：" + def.name()
+                    + "（" + def.hint() + "）",
+                    "[mymeido] Selected: " + def.name() + " (" + def.hint() + ")")), true);
         }
     }
 }

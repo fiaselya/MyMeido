@@ -41,7 +41,11 @@ public class MyMeido implements ModInitializer {
         //   2) 模式清单紧跟着加载 —— 实体读档时要靠它判断「这个模式 id 还认不认识」；
         //   3) 网络包注册与实体、指令一样，都是「两端都要有」的东西。
         MeidoItems.register();
-        MeidoAiConfig.load();          // 对话配置（chat/api.txt；没有就生成带中文说明的模板）
+        // ★ 语言必须排在最前面：后面几步里有好几处「生成的文件内容」要按它来写
+        //   （chat/api.txt 的注释、modes.json 的模式说明、人设卡模板），
+        //   排后面就会生成一份中文模板给英文玩家。
+        MeidoLocale.load();
+        MeidoAiConfig.load();          // 对话配置（chat/api.txt；没有就生成模板）
         // ★ 皮肤库必须比人设卡先加载：人设卡是按「现在有几个角色」逐个补模板的，
         //   而角色数量正是扫 skins 目录扫出来的（一张 png = 一个角色，数量不设上限）。
         MeidoSkinRegistry.reload();
@@ -57,6 +61,7 @@ public class MyMeido implements ModInitializer {
         MeidoCommand.register();
         // ★ 2026-09-20 大改：mod 不再绑定 / 拉起任何模型（本地 llama-server 那套已删）。
         //   要 AI 对话就玩家自己把 API 填进 chat/api.txt；不填 = 只有自带台词。
-        LOGGER.info("[mymeido] 公共端初始化完成：实体 mymeido:meido + 指令闹钟 + /mymeido 指令已就位");
+        LOGGER.info("[mymeido] common init done: entity mymeido:meido + command alarm + /mymeido"
+                + " registered; language={} ({})", MeidoLocale.code(), MeidoLocale.source());
     }
 }

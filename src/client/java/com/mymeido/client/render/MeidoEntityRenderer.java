@@ -95,8 +95,8 @@ public class MeidoEntityRenderer extends BipedEntityRenderer<MeidoEntity, MeidoE
 
         // 装备层属于「不生效也不报错」的那类问题，留一条启动日志，
         // 以后翻 logs/latest.log 一眼就能确认新版本挂了没有、护甲显示是开是关。
-        MyMeido.LOGGER.info("[mymeido] 渲染层已挂载：{} 层（护甲外观：{}）",
-                this.features.size(), RENDER_ARMOR ? "显示" : "隐藏（刻意）");
+        MyMeido.LOGGER.info("[mymeido] render layers mounted: {} (armor appearance: {})",
+                this.features.size(), RENDER_ARMOR ? "shown" : "hidden (intentional)");
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.mymeido.chat;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.ai.MeidoAiConfig;
 import com.mymeido.entity.MeidoColor;
 import com.mymeido.entity.MeidoEntity;
@@ -27,15 +28,17 @@ import net.minecraft.world.World;
  */
 public final class MeidoChat {
 
-    /** 名字与正文之间的分隔符。 */
-    private static final String SEPARATOR = "：";
+    /** 名字与正文之间的分隔符（随语言切换）。 */
+    private static String separator() {
+        return MeidoLocale.pick("：", ": ");
+    }
 
-    private static final String[] GREETINGS = {
-            "欢迎回来，主人。",
-            "今天也要一起加油呀。",
-            "主人，需要我做点什么吗？",
-            "嗯……我一直在等你。",
-            "要喝点什么吗？",
+    private static final String[][] GREETINGS = {
+            {"欢迎回来，主人。", "Welcome back, master."},
+            {"今天也要一起加油呀。", "Let's do our best again today."},
+            {"主人，需要我做点什么吗？", "Master, is there anything you need me to do?"},
+            {"嗯……我一直在等你。", "Mmm… I've been waiting for you."},
+            {"要喝点什么吗？", "Would you like something to drink?"},
     };
 
     private MeidoChat() {
@@ -53,7 +56,7 @@ public final class MeidoChat {
                                 .withColor(TextColor.fromRgb(color.nameColor()))
                                 .withBold(true));
 
-        MutableText separator = Text.literal(SEPARATOR)
+        MutableText separator = Text.literal(separator())
                 .setStyle(plain ? Style.EMPTY : Style.EMPTY.withColor(TextColor.fromRgb(color.nameColor())));
 
         MutableText body = Text.literal(text)
@@ -79,8 +82,8 @@ public final class MeidoChat {
 
     /** 一期用的固定台词，等三期换成 LLM 生成。 */
     public static String greeting(MeidoEntity meido, PlayerEntity player) {
-        String base = GREETINGS[meido.getRandom().nextInt(GREETINGS.length)];
-        return base;
+        String[] pair = GREETINGS[meido.getRandom().nextInt(GREETINGS.length)];
+        return MeidoLocale.pick(pair[0], pair[1]);
     }
 
     /**
@@ -91,15 +94,17 @@ public final class MeidoChat {
      */
     public static String received(String itemName, MeidoEntity.AcceptResult result) {
         return switch (result) {
-            case EQUIPPED -> "这个我换上了：" + itemName + "。";
-            case STORED -> "收好了，" + itemName + "。";
-            case OVERFLOW -> "背包塞不下了……" + itemName + " 先放地上好吗？";
-            case IGNORED -> "……";
+            case EQUIPPED -> MeidoLocale.pick("这个我换上了：", "I equipped: ") + itemName + MeidoLocale.pick("。", ".");
+            case STORED -> MeidoLocale.pick("收好了，", "Stored: ") + itemName + MeidoLocale.pick("。", ".");
+            case OVERFLOW -> MeidoLocale.pick("背包塞不下了……", "Backpack is full…") + itemName
+                    + MeidoLocale.pick(" 先放地上好吗？", " — left it on the ground for now, okay?");
+            case IGNORED -> MeidoLocale.pick("……", "…");
         };
     }
 
     /** 被名牌改名之后的一句话。 */
     public static String renamed(MeidoEntity meido) {
-        return "记住了，" + meido.characterName() + " 这个名字。";
+        return MeidoLocale.pick("记住了，", "Noted: ") + meido.characterName()
+                + MeidoLocale.pick(" 这个名字。", " is your name.");
     }
 }

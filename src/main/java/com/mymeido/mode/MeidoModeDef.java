@@ -1,5 +1,7 @@
 package com.mymeido.mode;
 
+import com.mymeido.MeidoLocale;
+
 /**
  * 模式清单里的<b>一条</b> —— 玩家在界面里看到的那一行。
  *
@@ -31,9 +33,12 @@ public record MeidoModeDef(String id, String name, MeidoModeType type,
     /** 界面上那一行小字。 */
     public String hint() {
         return switch (this.target) {
-            case NONE -> "选中后右键任意方块派发";
-            case OPTIONAL -> "选中后右键方块派发（位置会用作落点）";
-            case REQUIRED -> "选中后右键目标方块派发";
+            case NONE -> MeidoLocale.pick("选中后右键任意方块派发",
+                    "Right-click any block to assign");
+            case OPTIONAL -> MeidoLocale.pick("选中后右键方块派发（位置会用作落点）",
+                    "Right-click a block to assign (it becomes the drop point)");
+            case REQUIRED -> MeidoLocale.pick("选中后右键目标方块派发",
+                    "Right-click the target block to assign");
         };
     }
 }

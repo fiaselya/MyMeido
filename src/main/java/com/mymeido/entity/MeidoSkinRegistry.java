@@ -131,7 +131,7 @@ public final class MeidoSkinRegistry {
         try {
             Files.createDirectories(SKIN_DIR);
         } catch (IOException e) {
-            MyMeido.LOGGER.warn("[mymeido] 无法创建皮肤目录 {}：{}", SKIN_DIR, e.toString());
+            MyMeido.LOGGER.warn("[mymeido] cannot create skin directory {}: {}", SKIN_DIR, e.toString());
         }
 
         try (Stream<Path> stream = Files.list(SKIN_DIR)) {
@@ -156,8 +156,8 @@ public final class MeidoSkinRegistry {
                 if (previous != null) {
                     // 规范化后撞名（Sakurai Momoka.png vs sakurai_momoka.png）：
                     // 保留先扫到的那个，另一个明确报出来，免得玩家以为两张都被认了。
-                    MyMeido.LOGGER.warn("[mymeido] 皮肤 {} 与 {} 规范化后是同一个 id「{}」，"
-                            + "只认前者；想两个都留请改成不同的名字",
+                    MyMeido.LOGGER.warn("[mymeido] skins {} and {} normalize to the same id '{}'; "
+                            + "only the first is kept — rename one if you want both",
                             previous.getFileName(), fileName, id);
                     continue;
                 }
@@ -168,18 +168,18 @@ public final class MeidoSkinRegistry {
             if (found.isEmpty()) {
                 // 一张图都没有：退回内置保底，别让「选角色的菜单」变成空清单。
                 all = BUILTIN;
-                MyMeido.LOGGER.info("[mymeido] 皮肤目录 {} 里还没有 png，先用内置的 {} 个占位槽位"
-                        + "（贴图会回落原版 Steve）。放图进去就能用。", SKIN_DIR, BUILTIN.size());
+                MyMeido.LOGGER.info("[mymeido] skin directory {} has no png yet; using {} built-in placeholder "
+                        + "slots (textures fall back to vanilla Steve). Drop pngs in to use them.", SKIN_DIR, BUILTIN.size());
             } else {
                 found.sort(Comparator.comparing(MeidoSkin::getId, String.CASE_INSENSITIVE_ORDER));
                 all = List.copyOf(found);
-                MyMeido.LOGGER.info("[mymeido] 皮肤库已加载：{} 位角色 {} —— 目录 {}",
+                MyMeido.LOGGER.info("[mymeido] skin registry loaded: {} characters {} — directory {}",
                         all.size(), ids(), SKIN_DIR);
             }
             byId = index(all);
         } catch (IOException e) {
             // 目录读不了（权限 / 被占用）：保留上一次的清单比清空更好用。
-            MyMeido.LOGGER.warn("[mymeido] 皮肤目录 {} 读取失败，沿用上一次的清单：{}",
+            MyMeido.LOGGER.warn("[mymeido] failed to read skin directory {}; keeping the previous registry: {}",
                     SKIN_DIR, e.toString());
         }
 

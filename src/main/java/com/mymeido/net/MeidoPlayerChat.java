@@ -2,6 +2,7 @@ package com.mymeido.net;
 
 import java.util.List;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 import com.mymeido.ai.MeidoAi;
 import com.mymeido.entity.MeidoEntity;
@@ -92,8 +93,9 @@ public final class MeidoPlayerChat {
             }
             meido = findByName(player, target);
             if (meido == null) {
-                player.sendMessage(Text.literal(
-                        "[mymeido] 没有 @ 到叫「" + target + "」的女仆"), true);
+                player.sendMessage(Text.literal(MeidoLocale.pick(
+                        "[mymeido] 没有 @ 到叫「" + target + "」的女仆",
+                        "[mymeido] No maid named '" + target + "' was @-mentioned")), true);
                 return;
             }
             line = body;
@@ -101,8 +103,9 @@ public final class MeidoPlayerChat {
             // ---- 单机：老规矩，跟最近的女仆说 ----
             meido = CommandAlarmItem.findNearest(player);
             if (meido == null) {
-                player.sendMessage(Text.literal(
-                        "[mymeido] 附近没有女仆。先 /mymeido summon 召一只，或走过去再说话"), false);
+                player.sendMessage(Text.literal(MeidoLocale.pick(
+                        "[mymeido] 附近没有女仆。先 /mymeido summon 召一只，或走过去再说话",
+                        "[mymeido] No maid nearby. Summon one with /mymeido summon first, or walk over and talk")), false);
                 return;
             }
         }
@@ -125,8 +128,9 @@ public final class MeidoPlayerChat {
 
     /** 没有 @ 的轻提示：只给发送者的 action bar，公共聊天栏不受污染。 */
     private static void hintNoAt(ServerPlayerEntity player) {
-        player.sendMessage(Text.literal(
-                "[mymeido] 服务器上人多，想跟女仆说话要先 @她的名字（例如 @hoshino 你好）"), true);
+        player.sendMessage(Text.literal(MeidoLocale.pick(
+                "[mymeido] 服务器上人多，想跟女仆说话要先 @她的名字（例如 @hoshino 你好）",
+                "[mymeido] On a busy server, @-mention her name to talk to a maid (e.g. @hoshino hello)")), true);
     }
 
     /**

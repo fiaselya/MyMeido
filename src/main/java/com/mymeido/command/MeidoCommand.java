@@ -11,6 +11,7 @@ import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+import com.mymeido.MeidoLocale;
 import com.mymeido.ai.MeidoAi;
 import com.mymeido.ai.MeidoAiConfig;
 import com.mymeido.ai.MeidoMemoryExport;
@@ -67,6 +68,7 @@ import net.minecraft.util.math.Vec3d;
  * /mymeido mode &lt;模式&gt; [x y z]   直接派活（闹钟界面出问题时的备用通道）
  * /mymeido mission              看她现在在干什么、在哪儿、家在哪儿
  * /mymeido reload               重新读 config/mymeido/modes.json（不用重启游戏）
+ * /mymeido lang [auto|zh_cn|en_us] 看当前语言 / 切换 mod 说的语言（写 settings.txt）
  * </pre>
  *
  * <p>「最近的女仆」= 以玩家为中心 {@value #SEARCH_RADIUS} 格内、距离最近的那一个。
@@ -98,7 +100,9 @@ public final class MeidoCommand {
     /** 实体选择器：<code><who></code> 没匹配到任何女仆。 */
     private static final DynamicCommandExceptionType WHO_NOT_FOUND =
             new DynamicCommandExceptionType(who ->
-                    Text.literal("[mymeido] 附近没有名字带「" + who + "」的女仆"));
+                    Text.literal("[mymeido] " + MeidoLocale.pick("附近没有名字带「",
+                            "No maid whose name contains \"") + who
+                            + MeidoLocale.pick("」的女仆", "\"")));
 
     private MeidoCommand() {
     }
@@ -150,7 +154,7 @@ public final class MeidoCommand {
                                             String name = StringArgumentType.getString(ctx, "name");
                                             // 传空字符串 = 清掉改名，恢复成皮肤名。
                                             meido.setNickname(name);
-                                            feedback(ctx.getSource(), "当前名字：" + meido.characterName());
+                                            feedback(ctx.getSource(), MeidoLocale.pick("当前名字：", "Name: ") + meido.characterName());
                                             return 1;
                                         })))
 
@@ -253,15 +257,60 @@ public final class MeidoCommand {
 
                         .then(CommandManager.literal("aireload")
                                 .executes(ctx -> {
+                                    // ★ 语言也要重读：改了 settings.txt 之后，一条 aireload 全生效。
+                                    MeidoLocale.load();
                                     MeidoAiConfig.load();
                                     // 顺手重扫皮肤目录：往 skins/ 里丢了新角色之后，
                                     // 一条 aireload 就能把它的初始人设卡补出来。
                                     MeidoSkinRegistry.reload();
                                     MeidoPersona.loadAll(MeidoSkinRegistry.ids());
                                     MeidoAi.clearCooldowns();
-                                    feedback(ctx.getSource(), "对话配置与人设卡已重载（失败冷却也清了）");
+                                    feedback(ctx.getSource(), MeidoLocale.pick(
+                                            "对话配置与人设卡已重载（失败冷却也清了）",
+                                            "Chat config and persona files reloaded (failure cooldowns cleared)"));
                                     return aiStatus(ctx.getSource());
                                 }))
+
+                        // 看当前语言 / 切换这个 mod 说的语言。
+                        // ★ 只管「mod 的文案」（指令反馈、自带台词、生成的文件内容）；
+                        //   物品名/按键名走游戏自带语言文件，跟这里无关。
+                        .then(CommandManager.literal("lang")
+                                .executes(ctx -> {
+                                    feedback(ctx.getSource(), MeidoLocale.pick(
+                                            "当前语言：" + MeidoLocale.displayName()
+                                                    + "（settings.txt: language=" + MeidoLocale.setting()
+                                                    + "，来源：" + MeidoLocale.source() + "）",
+                                            "Language: " + MeidoLocale.displayName()
+                                                    + " (settings.txt: language=" + MeidoLocale.setting()
+                                                    + ", source: " + MeidoLocale.source() + ")"));
+                                    feedback(ctx.getSource(), MeidoLocale.pick(
+                                            "切换：/mymeido lang <auto|zh_cn|en_us>",
+                                            "Switch: /mymeido lang <auto|zh_cn|en_us>"));
+                                    return 1;
+                                })
+                                .then(CommandManager.argument("lang", StringArgumentType.word())
+                                        .executes(ctx -> {
+                                            String value = StringArgumentType.getString(ctx, "lang");
+                                            boolean saved = MeidoLocale.save(value);
+                                            // 模式名/说明跟随新语言（ modes.json 里没被玩家改过的那些）。
+                                            MeidoModeRegistry.load();
+                                            feedback(ctx.getSource(), saved
+                                                    ? MeidoLocale.pick(
+                                                    "语言已切换：" + MeidoLocale.displayName() + "（已写回 settings.txt）",
+                                                    "Language switched: " + MeidoLocale.displayName()
+                                                            + " (written back to settings.txt)")
+                                                    : MeidoLocale.pick(
+                                                    "语言已在内存里切成 " + MeidoLocale.displayName()
+                                                            + "，但写 settings.txt 失败（看日志）",
+                                                    "Language switched in memory to " + MeidoLocale.displayName()
+                                                            + ", but writing settings.txt failed (see log)"));
+                                            if ("auto".equals(MeidoLocale.setting())) {
+                                                feedback(ctx.getSource(), MeidoLocale.pick(
+                                                        "auto = 跟随游戏语言（客户端）/ 系统语言（服务端）",
+                                                        "auto = follow the game language (client) or the system locale (server)"));
+                                            }
+                                            return 1;
+                                        })))
 
                         .then(CommandManager.literal("persona")
                                 .executes(ctx -> showPersona(ctx.getSource(), whoOrNull(ctx)))
@@ -294,8 +343,10 @@ public final class MeidoCommand {
                                 .executes(ctx -> {
                                     boolean plain = MeidoAiConfig.togglePlainChat();
                                     feedback(ctx.getSource(), plain
-                                            ? "她说的话已切回纯白字（写回了 backend.txt）"
-                                            : "她说的话恢复角色专属色（写回了 backend.txt）");
+                                            ? MeidoLocale.pick("她说的话已切回纯白字（写回了 backend.txt）",
+                                            "Her lines switched to plain white (written back to backend.txt)")
+                                            : MeidoLocale.pick("她说的话恢复角色专属色（写回了 backend.txt）",
+                                            "Her lines switched back to her signature color (written back to backend.txt)"));
                                     return 1;
                                 }))
 
@@ -303,8 +354,10 @@ public final class MeidoCommand {
                                 .executes(ctx -> {
                                     MeidoModeRegistry.load();
                                     int count = MeidoModeRegistry.all().size();
-                                    feedback(ctx.getSource(), "模式清单已重新加载：" + count + " 条（"
-                                            + MeidoModeRegistry.configFile() + "）");
+                                    feedback(ctx.getSource(), MeidoLocale.pick("模式清单已重新加载：",
+                                            "Mode list reloaded: ")
+                                            + count + MeidoLocale.pick(" 条（", " entries (")
+                                            + MeidoModeRegistry.configFile() + MeidoLocale.pick("）", ")"));
                                     return MeidoModeRegistry.ids().isEmpty() ? 0 : 1;
                                 }))
 
@@ -319,7 +372,8 @@ public final class MeidoCommand {
                                         .executes(ctx -> {
                                             MeidoSkinRegistry.reload();
                                             MeidoPersona.loadAll(MeidoSkinRegistry.ids());
-                                            feedback(ctx.getSource(), "皮肤目录已重扫，人设卡也补齐了");
+                                            feedback(ctx.getSource(), MeidoLocale.pick("皮肤目录已重扫，人设卡也补齐了",
+                                            "Skins folder rescanned and persona files filled in"));
                                             return showSkins(ctx.getSource());
                                         }))))
                 );
@@ -335,7 +389,8 @@ public final class MeidoCommand {
         // ★ 造她的配方只有一份（{@link MeidoSpawn#atPlayer}）：
         //   指令与「女仆契约」道具两个入口共用，免得改了一处忘了另一处。
         MeidoEntity meido = MeidoSpawn.atPlayer(player, skin);
-        feedback(source, "已召唤女仆。皮肤 " + skin.getId() + " / 颜色 " + meido.getMeidoColor().getId());
+        feedback(source, MeidoLocale.pick("已召唤女仆。皮肤 ", "Maid summoned. Skin ") + skin.getId()
+                + MeidoLocale.pick(" / 颜色 ", " / color ") + meido.getMeidoColor().getId());
 
         // ★ 造出来的时候顺手把「指令闹钟」塞给创建人 —— 这是整个玩法唯一一个
         //   「你必须先有道具才会玩」的门槛，让她自己把闹钟交到你手上，
@@ -349,10 +404,14 @@ public final class MeidoCommand {
     /** 发一块绑给 {@code meido} 的专属闹钟，并说清「拿到了 / 背包满了」。 */
     private static int giveAlarmFor(ServerCommandSource source, ServerPlayerEntity player, MeidoEntity meido) {
         if (CommandAlarmItem.grantFor(player, meido)) {
-            feedback(source, "给了你一块只对「" + meido.characterName()
-                    + "」有效的指令闹钟：右键空气挑模式，右键方块派活");
+            feedback(source, MeidoLocale.pick("给了你一块只对「",
+                            "Gave you a command alarm that only works on ")
+                    + meido.characterName()
+                    + MeidoLocale.pick("」有效的指令闹钟：右键空气挑模式，右键方块派活",
+                    ": right-click air to pick a mode, right-click a block to assign work"));
         } else {
-            feedback(source, "背包满了，闹钟掉在你脚边了");
+            feedback(source, MeidoLocale.pick("背包满了，闹钟掉在你脚边了",
+                    "Inventory full - the alarm dropped at your feet"));
         }
         return 1;
     }
@@ -370,17 +429,21 @@ public final class MeidoCommand {
     private static int giveContract(ServerCommandSource source) {
         ServerPlayerEntity player = source.getPlayer();
         if (player == null) {
-            feedback(source, "女仆契约 mymeido:meido_contract —— 玩家加入世界时自动到手一张；"
-                    + "用法是右键它，再在聊天栏输入编号。下面是发给玩家的那份清单：");
+            feedback(source, MeidoLocale.pick("女仆契约 mymeido:meido_contract —— 玩家加入世界时自动到手一张；"
+                            + "用法是右键它，再在聊天栏输入编号。下面是发给玩家的那份清单：",
+                    "Maid contract mymeido:meido_contract - players get one automatically when joining a world; "
+                            + "right-click it, then type a number in chat. Here is the list a player would see:"));
             for (Text line : MeidoContractItem.menuLines()) {
                 source.sendFeedback(() -> line, false);
             }
             return 1;
         }
         if (MeidoContractItem.grant(player)) {
-            feedback(source, "给了你一张女仆契约：右键它 → 聊天栏选编号 → 她就在你脚下了");
+            feedback(source, MeidoLocale.pick("给了你一张女仆契约：右键它 → 聊天栏选编号 → 她就在你脚下了",
+                    "Gave you a maid contract: right-click it, pick a number in chat, and she appears at your feet"));
         } else {
-            feedback(source, "背包满了，女仆契约掉在你脚边了");
+            feedback(source, MeidoLocale.pick("背包满了，女仆契约掉在你脚边了",
+                    "Inventory full - the maid contract dropped at your feet"));
         }
         return 1;
     }
@@ -401,10 +464,14 @@ public final class MeidoCommand {
      */
     private static int giveAlarm(ServerCommandSource source, ServerPlayerEntity player) {
         if (CommandAlarmItem.grant(player)) {
-            feedback(source, "给了你一块未绑定的指令闹钟（对最近的女仆有效）：右键空气挑模式，右键方块派活。"
-                    + "想让闹钟只管某一位，用她造出来时配的那块专属的");
+            feedback(source, MeidoLocale.pick("给了你一块未绑定的指令闹钟（对最近的女仆有效）：右键空气挑模式，右键方块派活。"
+                            + "想让闹钟只管某一位，用她造出来时配的那块专属的",
+                    "Gave you an unbound command alarm (works on the nearest maid): right-click air to pick a "
+                            + "mode, right-click a block to assign work. To bind it to one specific maid, use the "
+                            + "dedicated alarm she came with"));
         } else {
-            feedback(source, "背包满了，指令闹钟掉在你脚边了");
+            feedback(source, MeidoLocale.pick("背包满了，指令闹钟掉在你脚边了",
+                    "Inventory full - the command alarm dropped at your feet"));
         }
         return 1;
     }
@@ -423,13 +490,17 @@ public final class MeidoCommand {
         //   于是你得先跑回家门口、再敲一遍，才知道是 id 打错了。
         Optional<MeidoModeDef> def = MeidoModeRegistry.byId(modeId);
         if (def.isEmpty()) {
-            source.sendError(Text.literal("[mymeido] 未知模式：" + modeId
-                    + "（可选：" + String.join(" / ", MeidoModeRegistry.ids()) + "）"));
+            source.sendError(Text.literal("[mymeido] "
+                    + MeidoLocale.pick("未知模式：", "Unknown mode: ") + modeId
+                    + MeidoLocale.pick("（可选：", " (valid: ")
+                    + String.join(" / ", MeidoModeRegistry.ids()) + MeidoLocale.pick("）", ")")));
             return 0;
         }
         if (def.get().needsTarget() && target == null) {
-            source.sendError(Text.literal("[mymeido]「" + def.get().name()
-                    + "」必须给目标位置：/mymeido mode " + def.get().id() + " <x y z>"));
+            source.sendError(Text.literal("[mymeido]" + MeidoLocale.pick("「", "\"") + def.get().name()
+                    + MeidoLocale.pick("」必须给目标位置：/mymeido mode ",
+                    "\" needs a target position: /mymeido mode ")
+                    + def.get().id() + " <x y z>"));
             return 0;
         }
         MeidoEntity meido = (target != null && source.getPlayer() == null)
@@ -452,9 +523,11 @@ public final class MeidoCommand {
         // ★ 报 her 的真实落点（钓鱼是岸边），不是玩家敲的那个坐标。
         String where = accepted.usesTarget() && result.spot() != null
                 ? " → " + MeidoMission.format(result.spot()) : "";
-        feedback(source, meido.characterName() + " 接到：" + accepted.name() + where);
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 接到：", " assigned: ")
+                + accepted.name() + where);
         if (!accepted.isImplemented()) {
-            feedback(source, "（这个模式的行为还在做，她只会走到目标点站着）");
+            feedback(source, MeidoLocale.pick("（这个模式的行为还在做，她只会走到目标点站着）",
+                    "(This mode's behaviour isn't finished yet - she will just walk to the spot and stand)"));
         }
         return 1;
     }
@@ -570,7 +643,8 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         MeidoSkin skin = MeidoSkin.fromId(skinId);
         meido.setSkin(skin);
-        feedback(source, meido.characterName() + " 换好皮肤了：" + skin.getId());
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 换好皮肤了：", " changed skin: ")
+                + skin.getId());
         return 1;
     }
 
@@ -579,7 +653,8 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         MeidoColor color = MeidoColor.fromId(colorId);
         meido.setMeidoColor(color);
-        feedback(source, meido.characterName() + " 专属色改成：" + color.getId());
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 专属色改成：", " color set to: ")
+                + color.getId());
         return 1;
     }
 
@@ -588,7 +663,8 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         MeidoEmotion emotion = MeidoEmotion.fromId(emotionId);
         meido.setEmotion(emotion);
-        feedback(source, meido.characterName() + " 情绪：" + emotion.getDisplayName());
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 情绪：", " emotion: ")
+                + emotion.getDisplayName());
         return 1;
     }
 
@@ -597,10 +673,11 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         MeidoInventory inventory = meido.getInventory();
         if (inventory.isEmpty()) {
-            feedback(source, meido.characterName() + " 的背包是空的");
+            feedback(source, meido.characterName()
+                    + MeidoLocale.pick(" 的背包是空的", "'s inventory is empty"));
             return 0;
         }
-        feedback(source, meido.characterName() + " 的背包：");
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 的背包：", "'s inventory:"));
         for (int slot = 0; slot < inventory.size(); slot++) {
             ItemStack stack = inventory.get(slot);
             if (stack.isEmpty()) {
@@ -618,9 +695,9 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         for (EquipmentSlot slot : SHOWN_SLOTS) {
             ItemStack stack = meido.getEquippedStack(slot);
-            String line = "  " + slot.getName() + "： "
+            String line = "  " + slot.getName() + MeidoLocale.pick("： ", ": ")
                     + (stack.isEmpty()
-                            ? "（空）"
+                            ? MeidoLocale.pick("（空）", "(empty)")
                             : stack.getCount() + " x " + stack.getName().getString());
             source.sendFeedback(() -> Text.literal(line), false);
         }
@@ -631,7 +708,8 @@ public final class MeidoCommand {
             throws CommandSyntaxException {
         MeidoEntity meido = pick(source, who);
         int count = meido.dropBackpack();
-        feedback(source, meido.characterName() + " 倒出 " + count + " 件东西");
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 倒出 ", " dropped ") + count
+                + MeidoLocale.pick(" 件东西", " items"));
         return 1;
     }
 
@@ -648,16 +726,20 @@ public final class MeidoCommand {
         MeidoEntity meido = pick(source, who);
         MeidoMission mission = meido.getMission();
         feedback(source,
-                meido.characterName() + " 现在在：" + mission.displayName()
-                        + "（" + mission.modeId() + "）");
+                meido.characterName() + MeidoLocale.pick(" 现在在：", " is now: ") + mission.displayName()
+                        + MeidoLocale.pick("（", " (") + mission.modeId() + MeidoLocale.pick("）", ")"));
         source.sendFeedback(() -> Text.literal(
-                "  目标点：" + MeidoMission.format(mission.target())), false);
+                MeidoLocale.pick("  目标点：", "  Target: ")
+                        + MeidoMission.format(mission.target())), false);
         source.sendFeedback(() -> Text.literal(
-                "  家：" + MeidoMission.format(mission.home())), false);
+                MeidoLocale.pick("  家：", "  Home: ")
+                        + MeidoMission.format(mission.home())), false);
         Optional<MeidoModeDef> def = meido.getModeDef();
         if (def.isPresent() && !def.get().isImplemented()) {
             source.sendFeedback(() -> Text.literal(
-                    "  （这个模式的「行为」还没做，她只会走到目标点站着）"), false);
+                    MeidoLocale.pick("  （这个模式的「行为」还没做，她只会走到目标点站着）",
+                            "  (This mode's behaviour isn't finished yet - she will just walk there and stand)")),
+                    false);
         }
         return 1;
     }
@@ -678,7 +760,9 @@ public final class MeidoCommand {
                 ? pick(source, who)
                 : anyMeidoInWorld(source.getWorld(), who);
         MeidoAi.onPlayerLine(meido, player, text);
-        feedback(source, meido.characterName() + " 正在想怎么回……（回复有 1~3 秒延迟是正常的）");
+        feedback(source, meido.characterName()
+                + MeidoLocale.pick(" 正在想怎么回……（回复有 1~3 秒延迟是正常的）",
+                " is thinking of a reply... (a 1-3 second delay is normal)"));
         return 1;
     }
 
@@ -712,52 +796,74 @@ public final class MeidoCommand {
      */
     private static int showProactive(ServerCommandSource source, String who) throws CommandSyntaxException {
         MeidoEntity meido = pickForCommand(source, who);
-        feedback(source, meido.characterName() + " 的主动搭话：");
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 的主动搭话：", "'s proactive chat:"));
         if (!MeidoAiConfig.proactiveChat()) {
-            feedback(source, "  已关闭 —— chat/api.txt 里 proactive_chat=false");
+            feedback(source, MeidoLocale.pick("  已关闭 —— chat/api.txt 里 proactive_chat=false",
+                    "  Disabled - proactive_chat=false in chat/api.txt"));
             return 1;
         }
         if (!MeidoAiConfig.aiEnabled()) {
-            feedback(source, "  不会发生 —— 还没接 API。主动搭话的台词必须让 API 现想");
-            feedback(source, "   （怎么接：/mymeido aiguide；接完 /mymeido aireload）");
+            feedback(source, MeidoLocale.pick("  不会发生 —— 还没接 API。主动搭话的台词必须让 API 现想",
+                    "  Won't happen - no API configured yet. Proactive lines must be written by the API"));
+            feedback(source, MeidoLocale.pick("   （怎么接：/mymeido aiguide；接完 /mymeido aireload）",
+                    "   (How to connect: /mymeido aiguide; then /mymeido aireload)"));
             return 1;
         }
         // ★ 计时圈半径（PROACTIVE_RANGE）必须印在这条「设置」行里，而不是只在最后
         //   「已累计停留」那句里 —— 最后那句要「创建人在线」才走得到，没记过创建人 /
         //   人不在线时都提前 return 了，玩家就永远看不到这个数字（2026-09-21 踩到：
         //   无头冒烟也断不到它）。半径是静态设置，跟秒数、次数一样属于「一眼该看见」的。
-        feedback(source, "  设置：创建人在 " + (int) MeidoEntity.PROACTIVE_RANGE
-                + " 格内时待够 " + MeidoAiConfig.proactiveIntervalSeconds() + " 秒触发一次，"
-                + "每小时最多 " + MeidoAiConfig.proactiveMaxPerHour() + " 次");
-        feedback(source, "  本小时：已说 " + meido.getProactiveCount() + " 次");
+        feedback(source, MeidoLocale.pick("  设置：创建人在 ",
+                "  Setup: when her creator stays within ")
+                + (int) MeidoEntity.PROACTIVE_RANGE
+                + MeidoLocale.pick(" 格内时待够 ", " blocks for ")
+                + MeidoAiConfig.proactiveIntervalSeconds()
+                + MeidoLocale.pick(" 秒触发一次，", " seconds, one conversation starts; ")
+                + MeidoLocale.pick("每小时最多 ", "at most ")
+                + MeidoAiConfig.proactiveMaxPerHour() + MeidoLocale.pick(" 次", " per hour"));
+        feedback(source, MeidoLocale.pick("  本小时：已说 ", "  This hour: said ")
+                + meido.getProactiveCount() + MeidoLocale.pick(" 次", " times"));
         // ★ 白天/黑夜排在「创建人」前面：这两条是<b>不论</b>创建人在不在都要看的信息，
         //   排在会 early-return 的检查后面就会被吃掉（第一版就踩了这个坑）。
-        feedback(source, "  现在：" + (meido.isNightNow()
-                ? "夜里 —— 她不会搭话（她只挑白天来）"
-                : "白天 —— 到点她会自己走过来"));
+        feedback(source, MeidoLocale.pick("  现在：", "  Right now: ") + (meido.isNightNow()
+                ? MeidoLocale.pick("夜里 —— 她不会搭话（她只挑白天来）",
+                "night - she won't start conversations (daytime only)")
+                : MeidoLocale.pick("白天 —— 到点她会自己走过来",
+                "daytime - she will walk over when the timer is up")));
         if (meido.getOwnerUuid() == null) {
-            feedback(source, "  创建人：没记录 —— 她不是「对某个玩家」造出来的");
-            feedback(source, "   → 用一张「女仆契约」再造一位（契约/指令造她时才认得主人）");
+            feedback(source, MeidoLocale.pick("  创建人：没记录 —— 她不是「对某个玩家」造出来的",
+                    "  Creator: none - she wasn't created for a specific player"));
+            feedback(source, MeidoLocale.pick("   → 用一张「女仆契约」再造一位（契约/指令造她时才认得主人）",
+                    "   -> Create another with a maid contract (only contract/command creation records an owner)"));
             return 1;
         }
         ServerPlayerEntity owner = meido.resolveOwner();
         if (owner == null) {
-            feedback(source, "  创建人：UUID " + meido.getOwnerUuid() + " —— 不在线 / 不在这个世界");
+            feedback(source, MeidoLocale.pick("  创建人：UUID ", "  Creator: UUID ") + meido.getOwnerUuid()
+                    + MeidoLocale.pick(" —— 不在线 / 不在这个世界", " - offline / not in this world"));
             return 1;
         }
-        feedback(source, "  创建人：" + owner.getName().getString() + "（在线，"
-                + Math.round(Math.sqrt(meido.squaredDistanceTo(owner))) + " 格外）");
+        feedback(source, MeidoLocale.pick("  创建人：", "  Creator: ") + owner.getName().getString()
+                + MeidoLocale.pick("（在线，", " (online, ")
+                + Math.round(Math.sqrt(meido.squaredDistanceTo(owner)))
+                + MeidoLocale.pick(" 格外）", " blocks away)"));
         if (meido.isProactiveApproaching()) {
-            feedback(source, "  正在走过去：还剩 " + meido.proactiveApproachLeft() + " tick 就放弃这次");
+            feedback(source, MeidoLocale.pick("  正在走过去：还剩 ", "  Walking over: gives up in ")
+                    + meido.proactiveApproachLeft() + MeidoLocale.pick(" tick 就放弃这次", " ticks"));
             return 1;
         }
         if (meido.isProactiveLingering()) {
-            feedback(source, "  刚说完，正在她身边站一会儿");
+            feedback(source, MeidoLocale.pick("  刚说完，正在她身边站一会儿",
+                    "  Just finished a line, lingering beside you for a moment"));
             return 1;
         }
-        feedback(source, "  已累计停留 " + formatTicks(meido.getOwnerDwellTicks())
-                + "（还差 " + formatTicks(meido.proactiveNeedTicks()) + "；离开 "
-                + (int) MeidoEntity.PROACTIVE_RANGE + " 格只是暂停计时）");
+        feedback(source, MeidoLocale.pick("  已累计停留 ", "  Dwell time so far: ")
+                + formatTicks(meido.getOwnerDwellTicks())
+                + MeidoLocale.pick("（还差 ", " (still needs ")
+                + formatTicks(meido.proactiveNeedTicks())
+                + MeidoLocale.pick("；离开 ", "; leaving ")
+                + (int) MeidoEntity.PROACTIVE_RANGE
+                + MeidoLocale.pick(" 格只是暂停计时）", " blocks only pauses the timer)"));
         return 1;
     }
 
@@ -771,20 +877,25 @@ public final class MeidoCommand {
     private static int proactiveSay(ServerCommandSource source, String who) throws CommandSyntaxException {
         MeidoEntity meido = pickForCommand(source, who);
         if (!MeidoAiConfig.aiEnabled()) {
-            source.sendError(Text.literal("[mymeido] 她还没接 API —— 主动搭话的台词是让 API 现想的，"
-                    + "基础模式下没有这句可发（/mymeido aiguide）"));
+            source.sendError(Text.literal("[mymeido] " + MeidoLocale.pick(
+                    "她还没接 API —— 主动搭话的台词是让 API 现想的，基础模式下没有这句可发（/mymeido aiguide）",
+                    "No API configured yet - proactive lines must be written by the API, so there is nothing "
+                            + "to send in built-in mode (/mymeido aiguide)")));
             return 0;
         }
         // 有玩家就对着玩家说（那才是「主人」）；控制台跑的，退而求其次找创建人。
         ServerPlayerEntity player = source.getPlayer() != null ? source.getPlayer() : meido.resolveOwner();
         MeidoAi.onProactive(meido, player);
-        feedback(source, "让 " + meido.characterName() + " 主动说一句……（1~3 秒后出现在聊天栏）");
+        feedback(source, MeidoLocale.pick("让 ", "Asking ") + meido.characterName()
+                + MeidoLocale.pick(" 主动说一句……（1~3 秒后出现在聊天栏）",
+                " to start a conversation... (appears in chat in 1-3 seconds)"));
         return 1;
     }
 
     /** {@code 300} → {@code 15.0 秒}。诊断输出里只出现秒，不出现 tick。 */
     private static String formatTicks(int ticks) {
-        return String.format(java.util.Locale.ROOT, "%.1f 秒", ticks / 20.0);
+        return String.format(java.util.Locale.ROOT, "%.1f%s", ticks / 20.0,
+                MeidoLocale.pick(" 秒", "s"));
     }
 
     // ---------------- 三期：人设与记忆（都能落到本地文件） ----------------
@@ -793,12 +904,14 @@ public final class MeidoCommand {
     private static int showPersona(ServerCommandSource source, String who) throws CommandSyntaxException {
         MeidoEntity meido = pickForCommand(source, who);
         String skinId = meido.getSkin().getId();
-        feedback(source, meido.characterName() + " 的人设卡：" + MeidoPersona.fileFor(skinId));
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 的人设卡：", "'s persona file: ")
+                + MeidoPersona.fileFor(skinId));
         String persona = MeidoPersona.personaFor(skinId);
         if (persona.isEmpty()) {
-            feedback(source, "  现在还没有生效的设定 —— 自己写，或敲 /mymeido persona extract 让 API 写");
+            feedback(source, MeidoLocale.pick("  现在还没有生效的设定 —— 自己写，或敲 /mymeido persona extract 让 API 写",
+                    "  No persona yet - write it yourself, or run /mymeido persona extract to let the API write it"));
         } else {
-            feedback(source, "  当前生效的设定：" + persona);
+            feedback(source, MeidoLocale.pick("  当前生效的设定：", "  Current persona: ") + persona);
         }
         return 1;
     }
@@ -814,15 +927,21 @@ public final class MeidoCommand {
     private static int showMemory(ServerCommandSource source, String who) throws CommandSyntaxException {
         MeidoEntity meido = pickForCommand(source, who);
         String summary = meido.getAiSummary();
-        feedback(source, meido.characterName() + " 的记忆要点："
-                + (summary.isEmpty() ? "（还没有，聊满一轮会自动压缩）" : summary));
+        feedback(source, meido.characterName() + MeidoLocale.pick(" 的记忆要点：", "'s memory key points: ")
+                + (summary.isEmpty()
+                        ? MeidoLocale.pick("（还没有，聊满一轮会自动压缩）",
+                        "(none yet - they are compressed automatically after a full exchange)")
+                        : summary));
         int recent;
         synchronized (meido.aiHistory()) {
             recent = meido.aiHistory().size();
         }
-        feedback(source, "  近期对话 " + recent + " 条（上限 12，满了就压缩成上面的要点）");
+        feedback(source, MeidoLocale.pick("  近期对话 ", "  Recent exchanges: ") + recent
+                + MeidoLocale.pick(" 条（上限 12，满了就压缩成上面的要点）",
+                " (cap 12; once full they are compressed into the key points above)"));
         java.nio.file.Path file = MeidoMemoryExport.write(meido);
-        feedback(source, "  可读副本：" + (file == null ? "导出失败（看日志）" : file));
+        feedback(source, MeidoLocale.pick("  可读副本：", "  Readable copy: ")
+                + (file == null ? MeidoLocale.pick("导出失败（看日志）", "export failed (see log)") : file));
         return 1;
     }
 
@@ -856,15 +975,18 @@ public final class MeidoCommand {
     private static int showSkins(ServerCommandSource source) {
         List<MeidoSkin> skins = MeidoSkinRegistry.all();
         int files = MeidoSkinRegistry.fileCount();
-        feedback(source, "皮肤库共 " + skins.size() + " 位角色"
+        feedback(source, MeidoLocale.pick("皮肤库共 ", "Skin library: ") + skins.size()
+                + MeidoLocale.pick(" 位角色", " characters")
                 + (files == 0
-                        ? "（皮肤目录里还没有 png，这是内置的占位槽位，贴图回落原版 Steve）"
-                        : "（皮肤目录里有 " + files + " 张 png）"));
+                        ? MeidoLocale.pick("（皮肤目录里还没有 png，这是内置的占位槽位，贴图回落原版 Steve）",
+                        " (no png in the skins folder yet - these are built-in placeholders, textured as vanilla Steve)")
+                        : MeidoLocale.pick("（皮肤目录里有 ", " (") + files
+                        + MeidoLocale.pick(" 张 png）", " png in the skins folder)")));
         for (int i = 0; i < skins.size(); i++) {
             MeidoSkin skin = skins.get(i);
             feedback(source, "  " + (i + 1) + ") " + skin.getId() + "   ←   " + skin.fileName());
         }
-        feedback(source, "目录：" + MeidoSkinRegistry.dir());
+        feedback(source, MeidoLocale.pick("目录：", "Folder: ") + MeidoSkinRegistry.dir());
         return skins.size();
     }
 

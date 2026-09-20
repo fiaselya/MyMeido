@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 import com.mymeido.entity.MeidoEntity;
 import com.mymeido.entity.MeidoSkin;
@@ -139,8 +140,10 @@ public class MeidoContractItem extends Item {
     public static List<Text> menuLines() {
         List<MeidoSkin> skins = MeidoSkinRegistry.all();
         List<Text> lines = new ArrayList<>(skins.size() + 3);
-        lines.add(Text.literal("[mymeido] 选一位女仆创造出来（皮肤库共 " + skins.size()
-                + " 位，一张 png = 一个角色）："));
+        lines.add(Text.literal(MeidoLocale.pick("[mymeido] 选一位女仆创造出来（皮肤库共 " + skins.size()
+                + " 位，一张 png = 一个角色）：",
+                "[mymeido] Choose a maid to create (skin library has " + skins.size()
+                + " entries, one png = one character):")));
 
         for (int i = 0; i < skins.size(); i++) {
             int number = i + 1;
@@ -157,13 +160,19 @@ public class MeidoContractItem extends Item {
         // ★ 皮肤目录里一张图都没有时，上面列的是内置占位槽位 —— 必须说出来。
         //   不说的话玩家会以为「这 4 个就是 mod 自带的角色」，然后抱怨贴图是 Steve。
         if (MeidoSkinRegistry.fileCount() == 0) {
-            lines.add(Text.literal("  注意：skins 文件夹里还没有 png，上面是内置的占位槽位"
+            lines.add(Text.literal(MeidoLocale.pick("  注意：skins 文件夹里还没有 png，上面是内置的占位槽位"
                     + "（贴图是原版 Steve）。放几张图进去，你的角色就在这儿了 → "
-                    + MeidoSkinRegistry.dir()).formatted(Formatting.YELLOW));
+                    + MeidoSkinRegistry.dir(),
+                    "  Note: no png in the skins folder yet; the entries above are built-in placeholder slots "
+                    + "(texture is vanilla Steve). Drop some images in and your characters appear here -> "
+                    + MeidoSkinRegistry.dir())).formatted(Formatting.YELLOW));
         }
 
-        lines.add(Text.literal("  输入编号创造；输入「取消」放弃。"
-                + (WINDOW_MS / 1000) + " 秒内有效，过期再右键一次。").formatted(Formatting.DARK_GRAY));
+        lines.add(Text.literal(MeidoLocale.pick("  输入编号创造；输入「取消」放弃。"
+                + (WINDOW_MS / 1000) + " 秒内有效，过期再右键一次。",
+                "  Enter a number to create; type 'cancel' to give up. "
+                + "Valid for " + (WINDOW_MS / 1000) + "s, right-click again after it expires."))
+                .formatted(Formatting.DARK_GRAY));
         return lines;
     }
 
@@ -206,7 +215,8 @@ public class MeidoContractItem extends Item {
 
         if ("取消".equals(line) || "cancel".equalsIgnoreCase(line) || "q".equalsIgnoreCase(line)) {
             PENDING.remove(id);
-            player.sendMessage(Text.literal("[mymeido] 已取消。契约还在你手里，想创造的时候再右键一次。")
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 已取消。契约还在你手里，想创造的时候再右键一次。",
+                    "[mymeido] Cancelled. The contract is still in your hand; right-click again when you want to create."))
                     .formatted(Formatting.GRAY), false);
             return true;
         }
@@ -215,8 +225,11 @@ public class MeidoContractItem extends Item {
         Integer pick = parseNumber(line, skins.size());
         if (pick == null) {
             // 不认识的内容不抢着吞掉 —— 只轻提示一句，让正常聊天照常走。
-            player.sendMessage(Text.literal("[mymeido] 还没选好：输入 1~" + skins.size()
-                    + " 选角色，或输入「取消」。").formatted(Formatting.YELLOW), true);
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 还没选好：输入 1~" + skins.size()
+                    + " 选角色，或输入「取消」。",
+                    "[mymeido] Not selected yet: enter 1~" + skins.size()
+                    + " to choose a character, or type 'cancel'."))
+                    .formatted(Formatting.YELLOW), true);
             return false;
         }
 
@@ -282,10 +295,12 @@ public class MeidoContractItem extends Item {
             }
         }
 
-        MyMeido.LOGGER.info("[mymeido] {} 用契约创造了女仆（皮肤 {}）",
+        MyMeido.LOGGER.info("[mymeido] {} created a maid with the contract (skin {})",
                 player.getName().getString(), skin.getId());
-        player.sendMessage(Text.literal("[mymeido] " + meido.characterName() + " 来了。皮肤 "
-                + skin.getId() + " / 颜色 " + meido.getMeidoColor().getId())
+        player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] " + meido.characterName() + " 来了。皮肤 "
+                + skin.getId() + " / 颜色 " + meido.getMeidoColor().getId(),
+                "[mymeido] " + meido.characterName() + " has arrived. Skin "
+                + skin.getId() + " / color " + meido.getMeidoColor().getId()))
                 .formatted(Formatting.GREEN), false);
 
         giveAlarm(player, meido);
@@ -303,12 +318,16 @@ public class MeidoContractItem extends Item {
      */
     private static void giveAlarm(ServerPlayerEntity player, MeidoEntity meido) {
         if (CommandAlarmItem.grantFor(player, meido)) {
-            player.sendMessage(Text.literal("[mymeido] 给了她专属的指令闹钟（只对 "
-                    + meido.characterName() + " 有效）：右键空气挑模式，右键方块派活。")
-                    .formatted(Formatting.GREEN), false);
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 给了她专属的指令闹钟（只对 "
+                    + meido.characterName() + " 有效）：右键空气挑模式，右键方块派活。",
+                    "[mymeido] Gave her a dedicated command alarm (only valid for "
+                    + meido.characterName() + "): right-click air to pick a mode, right-click a block to dispatch.")
+                    ).formatted(Formatting.GREEN), false);
         } else {
-            player.sendMessage(Text.literal("[mymeido] 背包满了，" + meido.characterName()
-                    + " 的专属闹钟掉在你脚边了。").formatted(Formatting.YELLOW), false);
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] 背包满了，" + meido.characterName()
+                    + " 的专属闹钟掉在你脚边了。",
+                    "[mymeido] Inventory is full, " + meido.characterName()
+                    + "'s dedicated alarm dropped at your feet.")).formatted(Formatting.YELLOW), false);
         }
     }
 
@@ -370,14 +389,20 @@ public class MeidoContractItem extends Item {
     @Override
     public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType type) {
         super.appendTooltip(stack, context, tooltip, type);
-        tooltip.add(Text.literal("右键（空气或地面）：在聊天栏列出皮肤库里的角色，编号 1~"
-                + MeidoSkinRegistry.size()).formatted(Formatting.GRAY));
-        tooltip.add(Text.literal("角色 = config/mymeido/skins/ 里的一张 png，文件名就是角色名")
+        tooltip.add(Text.literal(MeidoLocale.pick("右键（空气或地面）：在聊天栏列出皮肤库里的角色，编号 1~"
+                + MeidoSkinRegistry.size(),
+                "Right-click (air or ground): lists the characters in the skin library in chat, numbered 1~"
+                + MeidoSkinRegistry.size())).formatted(Formatting.GRAY));
+        tooltip.add(Text.literal(MeidoLocale.pick("角色 = config/mymeido/skins/ 里的一张 png，文件名就是角色名",
+                "A character = a png in config/mymeido/skins/, the file name is the character name"))
                 .formatted(Formatting.GRAY));
-        tooltip.add(Text.literal("然后在聊天栏输入编号，她就出现在你脚下").formatted(Formatting.GRAY));
-        tooltip.add(Text.literal("用掉就没了（一份只创造一位）；合成：下界之星 + 8 张纸")
+        tooltip.add(Text.literal(MeidoLocale.pick("然后在聊天栏输入编号，她就出现在你脚下",
+                "Then enter the number in chat and she appears at your feet")).formatted(Formatting.GRAY));
+        tooltip.add(Text.literal(MeidoLocale.pick("用掉就没了（一份只创造一位）；合成：下界之星 + 8 张纸",
+                "Used up once gone (one contract creates one maid); craft: nether star + 8 paper"))
                 .formatted(Formatting.DARK_GRAY));
-        tooltip.add(Text.literal("她到手时会附赠一块只对她有效的指令闹钟")
+        tooltip.add(Text.literal(MeidoLocale.pick("她到手时会附赠一块只对她有效的指令闹钟",
+                "She comes with a dedicated command alarm that only works for her"))
                 .formatted(Formatting.DARK_GRAY));
     }
 }

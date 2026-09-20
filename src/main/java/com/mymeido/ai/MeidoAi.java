@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 import com.mymeido.chat.MeidoChat;
 import com.mymeido.entity.MeidoEntity;
@@ -50,14 +51,27 @@ public final class MeidoAi {
     /** 同一个玩家 + 同一个原因只提示一次。 */
     private static final Map<String, Boolean> NOTIFIED = new ConcurrentHashMap<>();
 
-    /** API 挂掉时兜底的短句。 */
-    private static final String[] CANNED_REPLIES = {
+    /** API 失败后兜底的短句（中英两版，运行时按语言选，避免类加载时把语言焊死）。 */
+    private static final String[] CANNED_REPLIES_ZH = {
             "嗯，我听着呢。",
             "好的，主人。",
             "……你说什么？风好像把话吹跑了。",
             "我知道啦。",
             "嗯嗯。",
     };
+    private static final String[] CANNED_REPLIES_EN = {
+            "Yeah, I'm listening.",
+            "Yes, master.",
+            "...What did you say? The wind blew it away.",
+            "I see.",
+            "Mhm.",
+    };
+
+    /** 按当前语言挑一句兜底短句（运行时取值）。 */
+    private static String cannedReply(MeidoEntity meido) {
+        int i = meido.getRandom().nextInt(CANNED_REPLIES_ZH.length);
+        return MeidoLocale.pick(CANNED_REPLIES_ZH[i], CANNED_REPLIES_EN[i]);
+    }
 
     /**
      * 主动搭话<b>实在换不出新句子</b>时的兜底（API 两次都想重复）。
@@ -66,11 +80,17 @@ public final class MeidoAi {
      * 说「好的，主人」等于在回答一句根本没人说的话。
      * 挑句子时会避开最近说过的（见 {@link #pickUnsaidProactive}）。
      */
-    private static final String[] CANNED_PROACTIVE = {
+    private static final String[] CANNED_PROACTIVE_ZH = {
             "主人，我一直都在的。",
             "……你就这么站着，是在陪我吗？",
             "今天的风挺舒服的。",
             "主人要不要先歇一会儿？",
+    };
+    private static final String[] CANNED_PROACTIVE_EN = {
+            "Master, I've been here the whole time.",
+            "...Standing there like that... are you keeping me company?",
+            "The breeze feels nice today.",
+            "Master, would you like to rest for a bit?",
     };
 
     /** {@link #buildSystemPrompt} 的「这不是主动搭话」哨兵值。 */
@@ -124,7 +144,7 @@ public final class MeidoAi {
      */
     public static void onPlayerLine(MeidoEntity meido, ServerPlayerEntity player, String text) {
         if (!MeidoAiConfig.aiEnabled()) {
-            MyMeido.LOGGER.info("[mymeido][ai] 未接 API，跳过对玩家发言的回复（基础模式）");
+            MyMeido.LOGGER.info("[mymeido][ai] No API connected, skipping reply to player's message (basic mode)");
             return;
         }
         talk(meido, player, text, null);
@@ -153,15 +173,15 @@ public final class MeidoAi {
      */
     public static void onProactive(MeidoEntity meido, ServerPlayerEntity player) {
         if (!MeidoAiConfig.aiEnabled()) {
-            MyMeido.LOGGER.info("[mymeido][ai] 未接 API，跳过主动搭话（基础模式）");
+            MyMeido.LOGGER.info("[mymeido][ai] No API connected, skipping proactive chat (basic mode)");
             return;
         }
         if (apiCooling()) {
-            MyMeido.LOGGER.info("[mymeido][ai] API 冷却中，这次不主动搭话");
+            MyMeido.LOGGER.info("[mymeido][ai] API cooling down, skipping this proactive chat");
             return;
         }
         if (!IN_FLIGHT.add(meido.getUuid())) {
-            MyMeido.LOGGER.info("[mymeido][ai] 正在对话中，这次不主动搭话");
+            MyMeido.LOGGER.info("[mymeido][ai] Already in a conversation, skipping this proactive chat");
             return;
         }
         dispatchProactive(meido, player, 0);
@@ -184,7 +204,7 @@ public final class MeidoAi {
                 reply -> finishProactive(meido, player, reply, attempt),
                 error -> {
                     apiDownAt = System.currentTimeMillis();
-                    MyMeido.LOGGER.warn("[mymeido][ai] 主动搭话失败（{}），这次不说了", error);
+                    MyMeido.LOGGER.warn("[mymeido][ai] Proactive chat failed ({}), staying quiet this time", error);
                     notifyFallReason(player);
                     endTurn(meido, player);
                 });
@@ -195,18 +215,18 @@ public final class MeidoAi {
         String repeated = repeatedProactiveLine(meido, reply);
         if (repeated != null && attempt == 0) {
             // 第一次撞车：让她带着「上一句重复了」的提示重想一遍（只重试这一次）。
-            MyMeido.LOGGER.warn("[mymeido][ai] 主动搭话撞上说过的话（{}），让她换一句", repeated);
+            MyMeido.LOGGER.warn("[mymeido][ai] Proactive line collided with something said before ({}), asking her to pick another", repeated);
             dispatchProactive(meido, player, 1);
             return;   // ★ 不能调 endTurn：IN_FLIGHT 要一直占着，否则这轮的槽位会提前腾出来
         }
         String line = reply;
         if (repeated != null) {
             line = pickUnsaidProactive(meido);
-            MyMeido.LOGGER.warn("[mymeido][ai] 换了一句还是重复，退回自带台词：{}", line);
+            MyMeido.LOGGER.warn("[mymeido][ai] Still a repeat after switching, falling back to built-in line: {}", line);
         }
         meido.rememberProactiveSaid(line);
         recordHistory(meido, "assistant", line);
-        MyMeido.LOGGER.info("[mymeido][ai] {}（主动）：{}", meido.characterName(), line);
+        MyMeido.LOGGER.info("[mymeido][ai] {} (proactive): {}", meido.characterName(), line);
         MeidoChat.say(meido, line);
         // ★ 刻意不调 schedulePersonaUpdate：这一轮玩家一句话都没说，
         //   拿她自己的话去改人设卡只会让人设越跑越偏，还白花一次请求。
@@ -216,7 +236,7 @@ public final class MeidoAi {
     /** 这句是不是最近主动说过的（判据与复读拦截同一套：去空白、去尾标点）。撞上则返回那一句。 */
     private static String repeatedProactiveLine(MeidoEntity meido, String reply) {
         if (reply == null || reply.isBlank()) {
-            return "（空回复）";
+            return "(empty reply)";
         }
         String target = normalize(reply);
         for (String old : meido.recentProactiveSaid()) {
@@ -227,15 +247,17 @@ public final class MeidoAi {
         return null;
     }
 
-    /** 从自带台词里挑一句最近没说过的（全说过了就随便挑一句，不递归）。 */
+    /** 从自带台词里挑一句最近没说过的（全说过了就随便挑一句，不递归）。按当前语言取值。 */
     private static String pickUnsaidProactive(MeidoEntity meido) {
         List<String> said = meido.recentProactiveSaid();
-        for (String line : CANNED_PROACTIVE) {
+        for (int i = 0; i < CANNED_PROACTIVE_ZH.length; i++) {
+            String line = MeidoLocale.pick(CANNED_PROACTIVE_ZH[i], CANNED_PROACTIVE_EN[i]);
             if (!said.contains(line)) {
                 return line;
             }
         }
-        return CANNED_PROACTIVE[meido.getRandom().nextInt(CANNED_PROACTIVE.length)];
+        int i = meido.getRandom().nextInt(CANNED_PROACTIVE_ZH.length);
+        return MeidoLocale.pick(CANNED_PROACTIVE_ZH[i], CANNED_PROACTIVE_EN[i]);
     }
 
     private static void talk(MeidoEntity meido, ServerPlayerEntity player, String playerText, String systemEvent) {
@@ -270,7 +292,7 @@ public final class MeidoAi {
     private static void dispatch(MeidoEntity meido, ServerPlayerEntity player, String systemEvent) {
         // ---- 只有一种后端，冷却判断也就一条 ----
         if (apiCooling()) {
-            fallback(meido, player, "API 连不上，先歇一会儿");
+            fallback(meido, player, MeidoLocale.pick("API 连不上，先歇一会儿", "API unreachable, taking a short break"));
             endTurn(meido, player);
             return;
         }
@@ -290,8 +312,8 @@ public final class MeidoAi {
                     // ★ 复读拦截：小模型偶尔把主人的原话原样吐回来 —— 换兜底短句顶上。
                     String lastUser = lastUserLine(meido);
                     if (isEcho(reply, lastUser)) {
-                        MyMeido.LOGGER.warn("[mymeido][ai] 复读拦截：{}（原话：{}）", reply, lastUser);
-                        String canned = CANNED_REPLIES[meido.getRandom().nextInt(CANNED_REPLIES.length)];
+                        MyMeido.LOGGER.warn("[mymeido][ai] Echo blocked: {} (original: {})", reply, lastUser);
+                        String canned = cannedReply(meido);
                         recordHistory(meido, "assistant", canned);
                         MeidoChat.say(meido, canned);
                     } else {
@@ -306,7 +328,7 @@ public final class MeidoAi {
                 error -> {
                     // 失败：记冷却 + 一次性说明原因 + 兜底台词。她必须说话，游戏必须不卡。
                     apiDownAt = System.currentTimeMillis();
-                    MyMeido.LOGGER.warn("[mymeido][ai] API 失败（{}），走兜底台词", error);
+                    MyMeido.LOGGER.warn("[mymeido][ai] API failed ({}), using fallback line", error);
                     notifyFallReason(player);
                     fallback(meido, player, null);
                     endTurn(meido, player);
@@ -378,11 +400,11 @@ public final class MeidoAi {
         MeidoLlm.chat(meido.getServer(), MeidoAiConfig.llmOptions(), messages,
                 summary -> {
                     meido.setAiSummary(summary);
-                    MyMeido.LOGGER.info("[mymeido][ai] 记忆已压缩（{}）：{}", meido.characterName(), summary);
+                    MyMeido.LOGGER.info("[mymeido][ai] Memory compressed ({}): {}", meido.characterName(), summary);
                     finishSummary(meido, player, queuedLine);
                 },
                 error -> {
-                    MyMeido.LOGGER.warn("[mymeido][ai] 记忆压缩失败（{}），历史已还原，下轮再试", error);
+                    MyMeido.LOGGER.warn("[mymeido][ai] Memory compression failed ({}), history restored, retry next round", error);
                     synchronized (meido.aiHistory()) {
                         for (MeidoLlm.Msg message : snapshot) {
                             recordHistory(meido, message.role(), message.content());
@@ -446,12 +468,13 @@ public final class MeidoAi {
      */
     private static void fallback(MeidoEntity meido, ServerPlayerEntity player, String reason) {
         if (reason != null && player != null) {
-            player.sendMessage(Text.literal("（" + reason + "，她暂时只能简单应付几句）"), false);
+            player.sendMessage(Text.literal(MeidoLocale.pick("（" + reason + "，她暂时只能简单应付几句）",
+                    "(" + reason + ", she can only manage a few words for now)")), false);
         }
         if (playerTextBlank(meido)) {
             MeidoChat.say(meido, MeidoChat.greeting(meido, player));
         } else {
-            MeidoChat.say(meido, CANNED_REPLIES[meido.getRandom().nextInt(CANNED_REPLIES.length)]);
+            MeidoChat.say(meido, cannedReply(meido));
         }
     }
 
@@ -465,7 +488,8 @@ public final class MeidoAi {
 
     /** 同一个玩家只提示一次失败原因。 */
     private static void notifyFallReason(ServerPlayerEntity player) {
-        String reason = "API 没有响应（地址/密钥/模型名对吗？敲 /mymeido aistatus 看看）";
+        String reason = MeidoLocale.pick("API 没有响应（地址/密钥/模型名对吗？敲 /mymeido aistatus 看看）",
+                "API not responding (check the address/key/model name? run /mymeido aistatus)");
         if (player == null) {
             return;
         }
@@ -561,35 +585,53 @@ public final class MeidoAi {
     public static List<String> statusLines() {
         List<String> lines = new ArrayList<>();
         if (!MeidoAiConfig.aiEnabled()) {
-            lines.add("状态：基础模式 —— 没接 API");
-            lines.add("她会用自带台词回应你的点击（右键），但不会回复你打的话");
-            lines.add("接 API：填 " + MeidoAiConfig.configFile() + " 里的 api_base_url 与 api_model，");
-            lines.add("       再敲 /mymeido aireload（详细步骤看 /mymeido aiguide）");
+            lines.add(MeidoLocale.pick("状态：基础模式 —— 没接 API", "Status: Basic mode — no API connected"));
+            lines.add(MeidoLocale.pick("她会用自带台词回应你的点击（右键），但不会回复你打的话",
+                    "She answers your clicks (right-click) with built-in lines, but won't reply to what you type"));
+            lines.add(MeidoLocale.pick("接 API：填 " + MeidoAiConfig.configFile() + " 里的 api_base_url 与 api_model，",
+                    "To connect an API: set api_base_url and api_model in " + MeidoAiConfig.configFile() + ","));
+            lines.add(MeidoLocale.pick("       再敲 /mymeido aireload（详细步骤看 /mymeido aiguide）",
+                    "       then run /mymeido aireload (see /mymeido aiguide for details)"));
         } else {
-            lines.add("状态：API 模式");
-            lines.add("接口：" + MeidoAiConfig.baseUrl());
-            lines.add("模型：" + MeidoAiConfig.model());
-            lines.add("密钥：" + (MeidoAiConfig.apiKey().isBlank() ? "未填（本地服务通常不用填）" : "已填"));
-            lines.add("超时：" + MeidoAiConfig.timeoutMs() + " ms");
-            lines.add("流式：" + (MeidoAiConfig.stream()
-                    ? "开（SSE，给对方逐片回）" : "关（一次性返回；对方报「非流式不支持」时改成 api_stream=true）"));
+            lines.add(MeidoLocale.pick("状态：API 模式", "Status: API mode"));
+            lines.add(MeidoLocale.pick("接口：", "Endpoint: ") + MeidoAiConfig.baseUrl());
+            lines.add(MeidoLocale.pick("模型：", "Model: ") + MeidoAiConfig.model());
+            lines.add(MeidoLocale.pick("密钥：", "API key: ") + (MeidoAiConfig.apiKey().isBlank()
+                    ? MeidoLocale.pick("未填（本地服务通常不用填）", "not set (local server usually needs none)")
+                    : MeidoLocale.pick("已填", "set")));
+            lines.add(MeidoLocale.pick("超时：", "Timeout: ") + MeidoAiConfig.timeoutMs() + " ms");
+            lines.add(MeidoLocale.pick("流式：", "Streaming: ") + (MeidoAiConfig.stream()
+                    ? MeidoLocale.pick("开（SSE，给对方逐片回）", "on (SSE, streamed back piece by piece)")
+                    : MeidoLocale.pick("关（一次性返回；对方报「非流式不支持」时改成 api_stream=true）",
+                            "off (returned all at once; set api_stream=true if it says streaming unsupported)")));
             int headerCount = MeidoAiConfig.extraHeaders().size();
-            lines.add("自定义头：" + (headerCount == 0 ? "无" : headerCount + " 条"));
-            lines.add("请求地址：" + MeidoLlm.endpoint(MeidoAiConfig.baseUrl()));
+            lines.add(MeidoLocale.pick("自定义头：", "Custom headers: ") + (headerCount == 0
+                    ? MeidoLocale.pick("无", "none")
+                    : headerCount + MeidoLocale.pick(" 条", " headers")));
+            lines.add(MeidoLocale.pick("请求地址：", "Request URL: ") + MeidoLlm.endpoint(MeidoAiConfig.baseUrl()));
             if (apiCooling()) {
-                lines.add("⚠ 刚失败过，冷却中（约 1 分钟后自动恢复）");
+                lines.add(MeidoLocale.pick("⚠ 刚失败过，冷却中（约 1 分钟后自动恢复）",
+                        "⚠ Recently failed, cooling down (auto-recovers in ~1 min)"));
             }
         }
-        lines.add("聊天样式：" + (MeidoAiConfig.plainChat() ? "纯白" : "角色专属色"));
-        lines.add("人设自动更新：" + (MeidoAiConfig.autoPersonaUpdate()
-                ? "开（每轮对话后按对话更新人设卡）" : "关（可用 /mymeido persona extract 手动更新）"));
-        lines.add("主动搭话：" + (MeidoAiConfig.proactiveEnabled()
-                ? "开（创建人在 " + (int) MeidoEntity.PROACTIVE_RANGE + " 格内待够 "
+        lines.add(MeidoLocale.pick("聊天样式：", "Chat style: ") + (MeidoAiConfig.plainChat()
+                ? MeidoLocale.pick("纯白", "plain white")
+                : MeidoLocale.pick("角色专属色", "character color")));
+        lines.add(MeidoLocale.pick("人设自动更新：", "Auto persona update: ") + (MeidoAiConfig.autoPersonaUpdate()
+                ? MeidoLocale.pick("开（每轮对话后按对话更新人设卡）", "on (updates persona card from chat each round)")
+                : MeidoLocale.pick("关（可用 /mymeido persona extract 手动更新）",
+                        "off (manual update via /mymeido persona extract)")));
+        lines.add(MeidoLocale.pick("主动搭话：", "Proactive chat: ") + (MeidoAiConfig.proactiveEnabled()
+                ? MeidoLocale.pick("开（创建人在 " + (int) MeidoEntity.PROACTIVE_RANGE + " 格内待够 "
                         + MeidoAiConfig.proactiveIntervalSeconds() + " 秒 → 白天她会走过来开口，"
-                        + "每小时最多 " + MeidoAiConfig.proactiveMaxPerHour() + " 次）"
+                        + "每小时最多 " + MeidoAiConfig.proactiveMaxPerHour() + " 次）",
+                        "on (creator stays within " + (int) MeidoEntity.PROACTIVE_RANGE + " blocks for "
+                        + MeidoAiConfig.proactiveIntervalSeconds() + "s -> she walks over and speaks in daytime, up to "
+                        + MeidoAiConfig.proactiveMaxPerHour() + " times/hour)")
                 : MeidoAiConfig.proactiveChat()
-                        ? "关（填了 API 才会开 —— 台词要让 API 现想）"
-                        : "关（配置里 proactive_chat=false）"));
+                        ? MeidoLocale.pick("关（填了 API 才会开 —— 台词要让 API 现想）",
+                                "off (only opens with an API set — lines are thought up live by the API)")
+                        : MeidoLocale.pick("关（配置里 proactive_chat=false）", "off (proactive_chat=false in config)")));
         return lines;
     }
 
@@ -615,26 +657,31 @@ public final class MeidoAi {
      */
     public static void extractPersona(MeidoEntity meido, ServerPlayerEntity player) {
         if (!MeidoAiConfig.aiEnabled()) {
-            tell(player, "还没接 API，提取不了人设 —— 先按 /mymeido aiguide 把 api_base_url 与 api_model 填好");
+            tell(player, MeidoLocale.pick("还没接 API，提取不了人设 —— 先按 /mymeido aiguide 把 api_base_url 与 api_model 填好",
+                    "No API connected yet, can't extract persona — fill api_base_url and api_model first (see /mymeido aiguide)"));
             return;
         }
         if (apiCooling()) {
-            tell(player, "API 刚失败过还在冷却，等一分钟再试");
+            tell(player, MeidoLocale.pick("API 刚失败过还在冷却，等一分钟再试",
+                    "API just failed and is cooling down, wait a minute and retry"));
             return;
         }
         synchronized (meido.aiHistory()) {
             if (meido.aiHistory().isEmpty()) {
-                tell(player, meido.characterName() + " 还没跟你聊过天，没有素材可以提取 —— 先跟她说几句");
+                tell(player, MeidoLocale.pick(meido.characterName() + " 还没跟你聊过天，没有素材可以提取 —— 先跟她说几句",
+                        meido.characterName() + " hasn't chatted with you yet, nothing to extract — talk to her first"));
                 return;
             }
         }
         UUID id = meido.getUuid();
         if (!PERSONA_RUNNING.add(id)) {
             PERSONA_DIRTY.add(id);
-            tell(player, "已经有一次人设更新在跑了，等它写完会自动再补一次");
+            tell(player, MeidoLocale.pick("已经有一次人设更新在跑了，等它写完会自动再补一次",
+                    "A persona update is already running, it'll auto-run one more when done"));
             return;
         }
-        tell(player, "正在让 API 读你们的对话、给她写人设……（1~5 秒）");
+        tell(player, MeidoLocale.pick("正在让 API 读你们的对话、给她写人设……（1~5 秒）",
+                "Asking the API to read your chat and write her persona... (1-5s)"));
         runPersonaUpdate(meido, player, true);
     }
 
@@ -735,21 +782,21 @@ public final class MeidoAi {
                 text -> {
                     java.nio.file.Path file = MeidoPersona.writeAuto(meido.getSkin().getId(), text);
                     if (file != null) {
-                        MyMeido.LOGGER.info("[mymeido][ai] 人设卡已随对话更新（{}）：{}",
+                        MyMeido.LOGGER.info("[mymeido][ai] Persona card updated from conversation ({}): {}",
                                 meido.characterName(), oneLine(text));
                         if (announce) {
-                            tell(null, "人设已写进 " + file + "（下次对话立刻生效）");
+                            tell(null, "Persona written to " + file + " (takes effect next conversation)");
                         }
                     } else if (announce) {
-                        tell(null, "人设写文件失败了，看服务端日志");
+                        tell(null, "Failed to write persona file, check server log");
                     }
                     finishPersonaUpdate(meido);
                 },
                 error -> {
                     // 静默失败：不记后端冷却（人设是锦上添花，别连累正经对话）
-                    MyMeido.LOGGER.warn("[mymeido][ai] 人设卡更新失败（{}），跳过这一次", error);
+                    MyMeido.LOGGER.warn("[mymeido][ai] Persona card update failed ({}), skipping this time", error);
                     if (announce) {
-                        tell(null, "人设提取失败：" + error);
+                        tell(null, "Persona extraction failed: " + error);
                     }
                     finishPersonaUpdate(meido);
                 });

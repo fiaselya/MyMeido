@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 import com.mymeido.entity.MeidoEntity;
 import com.mymeido.mode.MeidoModeDef;
@@ -178,7 +179,8 @@ public class CommandAlarmItem extends Item {
         MeidoModeDef def = selectedMode(stack).orElse(null);
         if (def == null) {
             // 闹钟上的模式 id 在服务端配置里不存在（多半是两边 modes.json 不一致）。
-            warn(player, "闹钟上的模式「" + rawSelectedId(stack) + "」服务端不认识，请重新选一次");
+            warn(player, MeidoLocale.pick("闹钟上的模式「" + rawSelectedId(stack) + "」服务端不认识，请重新选一次",
+                    "The mode on the alarm '" + rawSelectedId(stack) + "' is unknown to the server, please choose again"));
             return ActionResult.FAIL;
         }
 
@@ -191,7 +193,8 @@ public class CommandAlarmItem extends Item {
 
         MeidoEntity meido = targetOf(player);
         if (meido == null) {
-            warn(player, "附近 " + (int) DISPATCH_RANGE + " 格内没有女仆可以派活");
+            warn(player, MeidoLocale.pick("附近 " + (int) DISPATCH_RANGE + " 格内没有女仆可以派活",
+                    "No maid within " + (int) DISPATCH_RANGE + " blocks to dispatch to"));
             return ActionResult.FAIL;
         }
 
@@ -207,11 +210,14 @@ public class CommandAlarmItem extends Item {
 
         MeidoModeDef accepted = result.def();
         String where = accepted.usesTarget() && result.spot() != null ? " → " + fmt(result.spot()) : "";
-        warn(player, "已派活：" + accepted.name() + where);
+        warn(player, MeidoLocale.pick("已派活：" + accepted.name() + where,
+                "Dispatched: " + accepted.name() + where));
         if (!accepted.isImplemented()) {
             // 诚实一点：这一批只做了「派发」，行为留第三期。
-            warn(player, "（「" + accepted.name() + "」的实际行为还在做，"
-                    + "她暂时只会走到那个位置站着）");
+            warn(player, MeidoLocale.pick("（「" + accepted.name() + "」的实际行为还在做，"
+                    + "她暂时只会走到那个位置站着）",
+                    "(the actual behavior of '" + accepted.name() + "' is still in progress, "
+                    + "she will just walk to that spot and stand for now)"));
         }
         return ActionResult.SUCCESS;
     }
@@ -228,43 +234,47 @@ public class CommandAlarmItem extends Item {
         // 摆在最前面，因为「我手上这块是给谁的」是拿错闹钟时最先要确认的事。
         java.util.UUID bound = boundMaidId(stack).orElse(null);
         if (bound == null) {
-            tooltip.add(Text.literal("未绑定：对最近的女仆有效").formatted(Formatting.DARK_GRAY));
+            tooltip.add(Text.literal(MeidoLocale.pick("未绑定：对最近的女仆有效", "Unbound: applies to the nearest maid")).formatted(Formatting.DARK_GRAY));
         } else {
             String label = boundMaidName(stack);
-            tooltip.add(Text.literal("绑定：" + label).formatted(Formatting.GOLD));
+            tooltip.add(Text.literal(MeidoLocale.pick("绑定：", "Bound: ") + label).formatted(Formatting.GOLD));
         }
 
         // ---- 第一段：你挑好的单子（派活时用哪个） ----
         MeidoModeDef def = selectedMode(stack).orElse(null);
         if (def == null) {
-            tooltip.add(Text.literal("选中模式：未选择").formatted(Formatting.GRAY));
-            tooltip.add(Text.literal("右键空气挑一个模式").formatted(Formatting.DARK_GRAY));
+            tooltip.add(Text.literal(MeidoLocale.pick("选中模式：未选择", "Selected mode: none")).formatted(Formatting.GRAY));
+            tooltip.add(Text.literal(MeidoLocale.pick("右键空气挑一个模式", "Right-click air to pick a mode")).formatted(Formatting.DARK_GRAY));
         } else {
-            tooltip.add(Text.literal("选中模式：" + def.name()).formatted(Formatting.AQUA));
+            tooltip.add(Text.literal(MeidoLocale.pick("选中模式：", "Selected mode: ") + def.name()).formatted(Formatting.AQUA));
             tooltip.add(Text.literal("  " + def.hint()).formatted(Formatting.GRAY));
             if (!def.isImplemented()) {
-                tooltip.add(Text.literal("  （行为留第三期）").formatted(Formatting.DARK_GRAY));
+                tooltip.add(Text.literal(MeidoLocale.pick("  （行为留第三期）", "  (behavior pending phase 3)")).formatted(Formatting.DARK_GRAY));
             }
         }
 
         // ---- 第二段：她此刻的真实状态（实时同步来的，和上面那份无关） ----
         Optional<String> nowId = nearbyState.get();
         if (nowId.isEmpty()) {
-            tooltip.add(Text.literal(bound == null ? "附近没有女仆" : label0(boundMaidName(stack)) + " 不在附近")
+            String who = label0(boundMaidName(stack));
+            tooltip.add(Text.literal(bound == null
+                    ? MeidoLocale.pick("附近没有女仆", "No maid nearby")
+                    : MeidoLocale.pick(who + " 不在附近", who + " is not nearby"))
                     .formatted(Formatting.DARK_GRAY));
             return;
         }
         String id = nowId.get();
-        tooltip.add(Text.literal("她现在："
+        tooltip.add(Text.literal(MeidoLocale.pick("她现在：", "She is now: ")
                 + MeidoModeRegistry.byId(id).map(MeidoModeDef::name).orElse(id)).formatted(Formatting.GREEN));
         if (def != null && !def.id().equalsIgnoreCase(id)) {
             // 两条不一致时的两种正常解释，都写出来 —— 别让玩家自己去猜是哪个。
-            tooltip.add(Text.literal("  （还没派给她，或者上一件活已经干完）").formatted(Formatting.DARK_GRAY));
+            tooltip.add(Text.literal(MeidoLocale.pick("  （还没派给她，或者上一件活已经干完）",
+                    "  (not dispatched to her yet, or her last task is done)")).formatted(Formatting.DARK_GRAY));
         }
     }
 
     private static String label0(String raw) {
-        return raw == null || raw.isBlank() ? "绑定的女仆" : raw;
+        return raw == null || raw.isBlank() ? MeidoLocale.pick("绑定的女仆", "bound maid") : raw;
     }
 
     // ------------------------------------------------------------------
@@ -450,8 +460,10 @@ public class CommandAlarmItem extends Item {
         if (bound == null || findMaidById(player, bound) != null) {
             return Optional.empty();
         }
-        return Optional.of("这块闹钟是「" + label0(boundMaidName(alarm)) + "」的，但她在 "
-                + (int) BOUND_RANGE + " 格内找不到（走远了 / 区块没加载 / 已经不在了）");
+        return Optional.of(MeidoLocale.pick("这块闹钟是「" + label0(boundMaidName(alarm)) + "」的，但她在 "
+                + (int) BOUND_RANGE + " 格内找不到（走远了 / 区块没加载 / 已经不在了）",
+                "This alarm belongs to '" + label0(boundMaidName(alarm)) + "', but she can't be found within "
+                + (int) BOUND_RANGE + " blocks (wandered off / chunk not loaded / gone)"));
     }
 
     // ------------------------------------------------------------------
@@ -513,7 +525,7 @@ public class CommandAlarmItem extends Item {
     private static void warn(PlayerEntity player, String message) {
         // true = 走 action bar（物品栏上方那行），不刷屏聊天框。
         player.sendMessage(Text.literal("[mymeido] " + message), true);
-        MyMeido.LOGGER.debug("[mymeido] 闹钟派活：{}", message);
+        MyMeido.LOGGER.debug("[mymeido] alarm dispatch: {}", message);
     }
 
     /** 给界面显示用：这个模式类型要不要位置。 */

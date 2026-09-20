@@ -3,6 +3,7 @@ package com.mymeido.client.screen;
 import java.util.List;
 import java.util.Optional;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.entity.MeidoEntity;
 import com.mymeido.item.CommandAlarmItem;
 import com.mymeido.item.MeidoItems;
@@ -79,7 +80,7 @@ public class MeidoModeScreen extends Screen {
     private int page;
 
     public MeidoModeScreen() {
-        super(Text.literal("派活"));
+        super(Text.literal(MeidoLocale.pick("派活", "Dispatch")));
     }
 
     // ------------------------------------------------------------------
@@ -109,7 +110,8 @@ public class MeidoModeScreen extends Screen {
         if (modes.isEmpty()) {
             // 理论上 load() 之后不会为空（读失败会退回内置清单），但真出现了得看得出来。
             this.addDrawableChild(ButtonWidget.builder(
-                            Text.literal("模式清单是空的（检查 config/mymeido/modes.json）"), b -> {
+                            Text.literal(MeidoLocale.pick("模式清单是空的（检查 config/mymeido/modes.json）",
+                                    "The mode list is empty (check config/mymeido/modes.json)")), b -> {
                             })
                     .dimensions(x, LIST_TOP, width, BUTTON_HEIGHT).build());
         }
@@ -119,23 +121,23 @@ public class MeidoModeScreen extends Screen {
             int arrowY = this.height - 44;
             this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> turnPage(-1))
                     .dimensions(x, arrowY, arrowWidth, BUTTON_HEIGHT)
-                    .tooltip(Tooltip.of(Text.literal("上一页")))
+                    .tooltip(Tooltip.of(Text.literal(MeidoLocale.pick("上一页", "Previous page"))))
                     .build());
             this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> turnPage(1))
                     .dimensions(x + width - arrowWidth, arrowY, arrowWidth, BUTTON_HEIGHT)
-                    .tooltip(Tooltip.of(Text.literal("下一页")))
+                    .tooltip(Tooltip.of(Text.literal(MeidoLocale.pick("下一页", "Next page"))))
                     .build());
         }
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("关闭"), b -> this.close())
+        this.addDrawableChild(ButtonWidget.builder(Text.literal(MeidoLocale.pick("关闭", "Close")), b -> this.close())
                 .dimensions(x, this.height - 24, width, BUTTON_HEIGHT).build());
     }
 
     /** 一个模式按钮。挑好的那个在名字后面挂「← 选中」，比任何高亮都直白。 */
     private ButtonWidget buildModeButton(MeidoModeDef def, boolean selected, int x, int y, int width) {
         Text label = Text.literal(def.name())
-                .append(Text.literal(def.isImplemented() ? "" : "（行为待三期）").formatted(Formatting.DARK_GRAY))
-                .append(Text.literal(selected ? "   ← 选中" : "").formatted(Formatting.YELLOW));
+                .append(Text.literal(def.isImplemented() ? "" : MeidoLocale.pick("（行为待三期）", "(behavior pending phase 3)")).formatted(Formatting.DARK_GRAY))
+                .append(Text.literal(selected ? MeidoLocale.pick("   ← 选中", "   <- selected") : "").formatted(Formatting.YELLOW));
         return ButtonWidget.builder(label, b -> choose(def))
                 .dimensions(x, y, width, BUTTON_HEIGHT)
                 .tooltip(Tooltip.of(Text.literal(def.desc() + "\n" + def.hint())))
@@ -207,7 +209,8 @@ public class MeidoModeScreen extends Screen {
 
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 16, TITLE_COLOR);
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("选一个模式，然后右键方块派给她"), this.width / 2, 32, SUBTITLE_COLOR);
+                Text.literal(MeidoLocale.pick("选一个模式，然后右键方块派给她",
+                        "Pick a mode, then right-click a block to dispatch to her")), this.width / 2, 32, SUBTITLE_COLOR);
 
         // ★ 单独一行写「她现在」：上面那些「← 选中」是你挑的单子，
         //   这一行才是她此刻真在干的事（一次性任务干完会自己变回游走）。
@@ -215,12 +218,12 @@ public class MeidoModeScreen extends Screen {
         if (nowId.isPresent()) {
             String id = nowId.get();
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("她现在："
+                    Text.literal(MeidoLocale.pick("她现在：", "She is now: ")
                             + MeidoModeRegistry.byId(id).map(MeidoModeDef::name).orElse(id)),
                     this.width / 2, 46, NOW_COLOR);
         } else {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("附近没有女仆"), this.width / 2, 46, HINT_COLOR);
+                    Text.literal(MeidoLocale.pick("附近没有女仆", "No maid nearby")), this.width / 2, 46, HINT_COLOR);
         }
 
         List<MeidoModeDef> modes = MeidoModeRegistry.all();
@@ -228,12 +231,14 @@ public class MeidoModeScreen extends Screen {
         int pages = Math.max(1, (modes.size() + perPage - 1) / perPage);
         if (pages > 1) {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("第 " + (this.page + 1) + " / " + pages + " 页"),
+                    Text.literal(MeidoLocale.pick("第 " + (this.page + 1) + " / " + pages + " 页",
+                            "Page " + (this.page + 1) + " / " + pages)),
                     this.width / 2, this.height - 44 + (BUTTON_HEIGHT - 8) / 2, SUBTITLE_COLOR);
         }
 
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("右键空气 = 开这个界面　·　潜行右键方块 = 一定派发（不会被床 / 箱子抢走）"),
+                Text.literal(MeidoLocale.pick("右键空气 = 开这个界面　·　潜行右键方块 = 一定派发（不会被床 / 箱子抢走）",
+                        "Right-click air = open this screen; sneak + right-click block = force dispatch (bed/chest won't steal it)")),
                 this.width / 2, this.height - 34, HINT_COLOR);
     }
 

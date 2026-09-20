@@ -1,5 +1,6 @@
 package com.mymeido.client.screen;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.net.MeidoChatPayload;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -29,7 +30,7 @@ public class MeidoChatScreen extends Screen {
     private TextFieldWidget input;
 
     public MeidoChatScreen() {
-        super(Text.literal("跟她说一句话"));
+        super(Text.literal(MeidoLocale.pick("跟她说一句话", "Say something to her")));
     }
 
     @Override
@@ -38,7 +39,8 @@ public class MeidoChatScreen extends Screen {
                 this.width / 2 - 155, this.height / 2 - 10, 310, 18, this.title);
         this.input.setMaxLength(MAX_LEN);
         // ⚠️ Yarn 1.21.1 叫 setPlaceholder（setHint 是 1.21.4+ 才加的，javap 核实过）。
-        this.input.setPlaceholder(Text.literal("跟她说一句话，回车发送（Esc 取消）")
+        this.input.setPlaceholder(Text.literal(MeidoLocale.pick("跟她说一句话，回车发送（Esc 取消）",
+                "Say something to her, press Enter to send (Esc to cancel)"))
                 .formatted(Formatting.GRAY));
         // ★ addSelectableChild + 手动 render —— 抄原版 ChatScreen 的路子，
         //   不用 addDrawableChild（那会让 super.render 再画一遍，叠两层文字阴影）。

@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.mymeido.MyMeido;
+import com.mymeido.MeidoLocale;
 import com.mymeido.ai.MeidoAi;
 import com.mymeido.ai.MeidoAiConfig;
 import com.mymeido.chat.MeidoChat;
@@ -760,10 +761,14 @@ public class MeidoEntity extends PathAwareEntity {
     /** 给玩家的<b>模糊</b>好感度描述（不露数字不露档位，只能品出来）。 */
     public String favorHint() {
         return switch (this.favorTier()) {
-            case 3 -> "她看你的眼神里有藏不住的欢喜，什么都愿意为你做。";
-            case 2 -> "她挺喜欢你的，说话时眼睛是弯着的。";
-            case 1 -> "关系还算亲近，但也就是普通的距离。";
-            default -> "她对你还存着戒心，说话总是客客气气的。";
+            case 3 -> MeidoLocale.pick("她看你的眼神里有藏不住的欢喜，什么都愿意为你做。",
+                    "Her eyes light up whenever she looks at you — she'd do anything for you.");
+            case 2 -> MeidoLocale.pick("她挺喜欢你的，说话时眼睛是弯着的。",
+                    "She rather likes you; her eyes crinkle when she speaks.");
+            case 1 -> MeidoLocale.pick("关系还算亲近，但也就是普通的距离。",
+                    "You're fairly close, but it's just a normal distance.");
+            default -> MeidoLocale.pick("她对你还存着戒心，说话总是客客气气的。",
+                    "She's still wary of you, always polite and careful with her words.");
         };
     }
 
@@ -797,14 +802,16 @@ public class MeidoEntity extends PathAwareEntity {
         boolean hasWeapon = isMeleeWeapon(this.getEquippedStack(EquipmentSlot.MAINHAND))
                 || this.weaponSlotInInventory() >= 0;
         switch (this.favorTier()) {
-            case 3 -> MeidoChat.say(this, "呜……为什么是我……我做错什么了吗……");
+            case 3 -> MeidoChat.say(this, MeidoLocale.pick("呜……为什么是我……我做错什么了吗……",
+                    "Sob… why me… what did I do wrong…"));
             case 2 -> {
                 // 高档：先硬扛；掉到残血线（25%）才逃。damage() 走到这里时血已扣完，
                 // 所以直接看当前血量。
                 if (this.getHealth() <= this.getMaxHealth() * 0.25f) {
                     this.startFleeing(attacker.getPos());
                 } else {
-                    MeidoChat.say(this, "……我、我不还手。别生气了好不好。");
+                    MeidoChat.say(this, MeidoLocale.pick("……我、我不还手。别生气了好不好。",
+                            "…I won't fight back. Please don't be mad."));
                 }
             }
             case 1 -> this.startFleeing(attacker.getPos());
@@ -813,7 +820,8 @@ public class MeidoEntity extends PathAwareEntity {
                     this.retaliateTarget = attacker;
                     this.retaliateUntil = this.age + 200;
                     this.holdWeapon();
-                    MeidoChat.say(this, "……够了。你也别怪我不客气。");
+                    MeidoChat.say(this, MeidoLocale.pick("……够了。你也别怪我不客气。",
+                            "…That's enough. Don't blame me for what happens next."));
                 } else {
                     this.startFleeing(attacker.getPos());
                 }
@@ -924,7 +932,9 @@ public class MeidoEntity extends PathAwareEntity {
                 (syncId, playerInventory, p) -> new GenericContainerScreenHandler(
                         ScreenHandlerType.GENERIC_9X1, syncId, playerInventory,
                         this.inventory.backing(), 1),
-                Text.literal(this.getNickname().isEmpty() ? "女仆的背包" : this.getNickname() + " 的背包")));
+                Text.literal(this.getNickname().isEmpty()
+                        ? MeidoLocale.pick("女仆的背包", "Maid's backpack")
+                        : this.getNickname() + MeidoLocale.pick(" 的背包", "'s backpack"))));
         return ActionResult.SUCCESS;
     }
 
@@ -957,7 +967,7 @@ public class MeidoEntity extends PathAwareEntity {
         this.finishOneShotMission();
         if (count > 0) {
             this.setEmotion(MeidoEmotion.HAPPY);
-            MeidoChat.say(this, "东西都放这儿了。");
+            MeidoChat.say(this, MeidoLocale.pick("东西都放这儿了。", "I left everything here."));
         }
     }
 
@@ -1017,7 +1027,8 @@ public class MeidoEntity extends PathAwareEntity {
             // 自愈用更小的半径重找（8 格会把她带到别的池塘去，那就不是「这片水」了）。
             Optional<BlockPos> again = MeidoWorkSpots.resolveFishingSpot(this.getWorld(), post, 6);
             if (again.isEmpty()) {
-                this.endMission("钓鱼干不下去了：附近没有可以下钩的水面了");
+                this.endMission(MeidoLocale.pick("钓鱼干不下去了：附近没有可以下钩的水面了",
+                        "Can't fish anymore: there's no water nearby to cast a line into"));
                 return;
             }
             this.mission.setTarget(again.get());
@@ -1028,7 +1039,9 @@ public class MeidoEntity extends PathAwareEntity {
             // 甩竿：先把她的竿拿到手上（没有竿就当场收工），再定「等多久」。
             ItemStack rod = this.holdFishingRod();
             if (rod.isEmpty()) {
-                this.endMission("钓鱼干不下去了：她身上没有钓鱼竿了（右键递给她或 Q 扔给她一根）");
+                this.endMission(MeidoLocale.pick(
+                        "钓鱼干不下去了：她身上没有钓鱼竿了（右键递给她或 Q 扔给她一根）",
+                        "Can't fish anymore: she has no fishing rod (right-click to hand her one, or press Q to drop it)"));
                 return;
             }
             this.swingHand(Hand.MAIN_HAND);
@@ -1093,7 +1106,8 @@ public class MeidoEntity extends PathAwareEntity {
         }
         if (!first.isEmpty()) {
             this.setEmotion(MeidoEmotion.HAPPY);
-            MeidoChat.say(this, "钓到 " + first.getName().getString() + " 了。");
+            MeidoChat.say(this, MeidoLocale.pick("钓到 ", "Caught a ") + first.getName().getString()
+                    + MeidoLocale.pick(" 了。", "."));
         }
     }
 
@@ -1286,7 +1300,9 @@ public class MeidoEntity extends PathAwareEntity {
         if (plot.isEmpty()) {
             Optional<BlockPos> again = MeidoWorkSpots.resolveFarmSpot(this.getWorld(), post);
             if (again.isEmpty()) {
-                this.endMission("种植干不下去了：附近没有能种的耕地了（要先翻地，而且得有光照）");
+                this.endMission(MeidoLocale.pick(
+                        "种植干不下去了：附近没有能种的耕地了（要先翻地，而且得有光照）",
+                        "Can't farm anymore: no farmland to plant within range (till it with a hoe first, and it needs light)"));
                 return;
             }
             this.mission.setTarget(again.get());
@@ -1297,7 +1313,9 @@ public class MeidoEntity extends PathAwareEntity {
         //   两者皆无才是死局。
         if (!this.hasPlantableSeeds()
                 && !MeidoWorkSpots.hasCropNear(this.getWorld(), post, MeidoWorkSpots.WORK_RADIUS)) {
-            this.endMission("种植干不下去了：她包里没有能种的东西了（Q 扔给她一些小麦种子或地狱疣）");
+            this.endMission(MeidoLocale.pick(
+                    "种植干不下去了：她包里没有能种的东西了（Q 扔给她一些小麦种子或地狱疣）",
+                    "Can't farm anymore: she has nothing to plant (press Q to drop her some wheat seeds or nether wart)"));
             return;
         }
         this.farmCooldown = FARM_INTERVAL;
@@ -1379,7 +1397,7 @@ public class MeidoEntity extends PathAwareEntity {
             }
             this.swingHand(Hand.MAIN_HAND);
             this.setEmotion(MeidoEmotion.HAPPY);
-            MeidoChat.say(this, "收了一茬小麦。");
+            MeidoChat.say(this, MeidoLocale.pick("收了一茬小麦。", "Harvested a patch of wheat."));
         } else if (state.isOf(Blocks.NETHER_WART)) {
             // 原版量级：无时运 2~4 个（时运我们不吃，跟钓竿一个道理）。
             int count = 2 + this.getRandom().nextInt(3);
@@ -1389,7 +1407,7 @@ public class MeidoEntity extends PathAwareEntity {
             }
             this.swingHand(Hand.MAIN_HAND);
             this.setEmotion(MeidoEmotion.HAPPY);
-            MeidoChat.say(this, "收了一茬地狱疣。");
+            MeidoChat.say(this, MeidoLocale.pick("收了一茬地狱疣。", "Harvested a patch of nether wart."));
         }
     }
 
@@ -1503,9 +1521,10 @@ public class MeidoEntity extends PathAwareEntity {
      */
     private void finishOneShotMission() {
         String finished = this.mission.displayName();
-        this.endMission("「" + finished + "」干完了，闹钟已切回"
+        this.endMission(MeidoLocale.pick("「", "‘") + finished + MeidoLocale.pick(
+                "」干完了，闹钟已切回", "’ done; alarm reset to ")
                 + MeidoModeRegistry.byId(MeidoModeRegistry.DEFAULT_MODE_ID)
-                        .map(MeidoModeDef::name).orElse("默认模式"));
+                        .map(MeidoModeDef::name).orElse(MeidoLocale.pick("默认模式", "default mode")));
     }
 
     // ------------------------------------------------------------------
@@ -1713,11 +1732,11 @@ public class MeidoEntity extends PathAwareEntity {
             ServerPlayerEntity target = this.proactiveTarget();
             this.approachTicks--;
             if (target == null) {
-                this.cancelProactiveApproach("主人不在了");
+                this.cancelProactiveApproach("owner gone");
             } else if (this.isNightNow()) {
-                this.cancelProactiveApproach("天黑了");
+                this.cancelProactiveApproach("it's night");
             } else if (this.approachTicks == 0) {
-                this.cancelProactiveApproach("走不过去");
+                this.cancelProactiveApproach("can't reach");
             }
             return;
         }
@@ -1744,12 +1763,12 @@ public class MeidoEntity extends PathAwareEntity {
         // ---- 到点了：先决定这次搭不搭话，再清零（不管搭不搭，计时都从头来）----
         this.ownerDwellTicks = 0;
         if (this.isNightNow()) {
-            MyMeido.LOGGER.info("[mymeido] {} 攒够了停留时间，但现在是夜里 —— 这次不搭话",
+            MyMeido.LOGGER.info("[mymeido] {} accumulated enough dwell time, but it's night now — skipping this proactive chat",
                     this.characterName());
             return;
         }
         if (this.proactiveCount >= MeidoAiConfig.proactiveMaxPerHour()) {
-            MyMeido.LOGGER.info("[mymeido] {} 本小时已主动搭话 {} 次（上限 {}），等下一个小时",
+            MyMeido.LOGGER.info("[mymeido] {} already proactively chatted {} times this hour (cap {}), waiting for next hour",
                     this.characterName(), this.proactiveCount, MeidoAiConfig.proactiveMaxPerHour());
             return;
         }
@@ -1768,7 +1787,7 @@ public class MeidoEntity extends PathAwareEntity {
     private void beginProactiveApproach(ServerPlayerEntity owner) {
         this.approachTarget = owner.getUuid();
         this.approachTicks = PROACTIVE_APPROACH_TICKS;
-        MyMeido.LOGGER.info("[mymeido] {} 要去跟 {} 搭话",
+        MyMeido.LOGGER.info("[mymeido] {} is going to chat with {}",
                 this.characterName(), owner.getName().getString());
     }
 
@@ -1794,7 +1813,7 @@ public class MeidoEntity extends PathAwareEntity {
         }
         this.refreshProactiveHour();
         this.proactiveCount++;
-        MyMeido.LOGGER.info("[mymeido] {} 走到 {} 身边搭话（本小时第 {} 次）",
+        MyMeido.LOGGER.info("[mymeido] {} walked up to {} to chat ({}th time this hour)",
                 this.characterName(), owner.getName().getString(), this.proactiveCount);
         MeidoAi.onProactive(this, owner);
     }
@@ -1804,7 +1823,7 @@ public class MeidoEntity extends PathAwareEntity {
         if (this.approachTicks <= 0 && this.approachTarget == null) {
             return;
         }
-        MyMeido.LOGGER.info("[mymeido] {} 取消这次主动搭话（{}）", this.characterName(), reason);
+        MyMeido.LOGGER.info("[mymeido] {} cancelled this proactive chat ({})", this.characterName(), reason);
         this.approachTicks = 0;
         this.approachTarget = null;
         this.getNavigation().stop();
@@ -2096,7 +2115,7 @@ public class MeidoEntity extends PathAwareEntity {
     public Assignment assignMode(String modeId, BlockPos target, PlayerEntity dispatcher) {
         Optional<MeidoModeDef> defOpt = MeidoModeRegistry.byId(modeId);
         if (defOpt.isEmpty()) {
-            return Assignment.failed("派活失败：服务端不认识模式「" + modeId + "」");
+            return Assignment.failed(MeidoLocale.pick("派活失败：服务端不认识模式「", "Assignment failed: server does not recognize mode '") + modeId + MeidoLocale.pick("」", "'"));
         }
         MeidoModeDef def = defOpt.get();
 
@@ -2104,10 +2123,14 @@ public class MeidoEntity extends PathAwareEntity {
         //   「先给东西再派活」是玩法的一部分，缺了就当场说清楚，别让她走到地方才发现干不了。
         //   （活干到一半东西没了的，由 tick 里的对应检查兜底：竿没了收工 / 没种子没熟麦收工。）
         if (def.type() == MeidoModeType.FISH && this.currentFishingRod().isEmpty()) {
-            return Assignment.failed("派活失败：「" + def.name() + "」要先给她一根钓鱼竿（右键递给她或 Q 扔给她）");
+            return Assignment.failed(MeidoLocale.pick("派活失败：「", "Assignment failed: '") + def.name()
+                    + MeidoLocale.pick("」要先给她一根钓鱼竿（右键递给她或 Q 扔给她）",
+                            "' needs a fishing rod first (right-click to hand it to her, or press Q to drop it)"));
         }
         if (def.type() == MeidoModeType.FARM && !this.hasPlantableSeeds()) {
-            return Assignment.failed("派活失败：「" + def.name() + "」要先给她小麦种子或地狱疣（Q 扔给她即可）");
+            return Assignment.failed(MeidoLocale.pick("派活失败：「", "Assignment failed: '") + def.name()
+                    + MeidoLocale.pick("」要先给她小麦种子或地狱疣（Q 扔给她即可）",
+                            "' needs wheat seeds or nether wart first (press Q to drop them)"));
         }
 
         // ★ 翻译「你点的那一格」。模式不需要位置时原样返回，所以这里不用再分情况。
@@ -2254,7 +2277,7 @@ public class MeidoEntity extends PathAwareEntity {
         }
         // 老存档没有这几个键 → mission 保持默认（游走）；配置里删掉过某个模式 → 拉回游走。
         if (this.mission.sanitize()) {
-            MyMeido.LOGGER.warn("[mymeido] 存档里的模式 id 已不在配置中，回落为 {}（实体 {}）",
+            MyMeido.LOGGER.warn("[mymeido] saved mode id is no longer in config, falling back to {} (entity {})",
                     this.mission.modeId(), this.getUuid());
         }
         // 三期：对话历史 + 记忆摘要。老存档没有 → 空历史/空摘要，行为不变。

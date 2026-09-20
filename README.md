@@ -1,5 +1,7 @@
 # MyMeido · 我的女仆
 
+[中文](README.md) | [English](README_EN.md)
+
 在 Minecraft 里养一个**属于你自己的女仆**：她会听话干活、会挨打还手、会自己过日子，
 接上任意 OpenAI 兼容的模型之后，她还会**跟你聊天、记得住你们说过的话、主动来搭话**。
 
@@ -73,6 +75,13 @@ api_extra_headers=
 **白天**她会自己走过来先跟你说句话；天黑就不打扰你。每小时最多 2 次，
 台词由模型现想（会避开最近说过的、也会按你们现在的关系调整口吻）。
 `/mymeido proactive` 看状态，`/mymeido proactive say` 可以立刻看效果。
+
+**语言（中英双语）**：mod 的文案 —— 指令反馈、她的自带台词、生成的配置文件说明、
+发给模型的提示词（也就是她跟你说话用的语言）—— 会**自动跟随游戏语言**：
+中文环境说中文，其它语言一律英文。想固定的话，改
+`config/mymeido/settings.txt` 里的 `language=auto|zh_cn|en_us`，或直接敲
+`/mymeido lang <值>`（当场生效并写回）。物品名 / 按键名走游戏自带的多语言文件，
+由你的游戏语言设置决定。
 
 ### 四、她记得你是谁
 
@@ -149,6 +158,7 @@ api_extra_headers=
 /mymeido aistatus           看 AI 后端状态（地址 / 流式 / 自定义头 / 人设更新）
 /mymeido aiguide            怎么把模型接起来（分几条路线讲）
 /mymeido aireload           改完 api.txt 热重载
+/mymeido lang [auto|zh_cn|en_us]  看 / 切这个 mod 说的语言（写 settings.txt）
 /mymeido persona [extract]  看她的人设卡 / 让模型总结一次
 /mymeido memory             看她的记忆要点
 ```

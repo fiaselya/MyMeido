@@ -3,6 +3,7 @@ package com.mymeido.entity;
 import java.util.Optional;
 import java.util.function.Predicate;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.mode.MeidoModeType;
 
 import net.minecraft.block.BlockState;
@@ -96,14 +97,21 @@ public final class MeidoWorkSpots {
      */
     public static String failureHint(MeidoModeType type, String modeName) {
         if (type == MeidoModeType.FISH) {
-            return "派活失败：「" + modeName + "」附近 " + SEARCH_RADIUS
-                    + " 格内没有能下钩的水面（点水里、点岸边都认，但得挨着水）";
+            return MeidoLocale.pick("派活失败：「", "Assignment failed: '") + modeName + MeidoLocale.pick(
+                    "」附近 " + SEARCH_RADIUS
+                            + " 格内没有能下钩的水面（点水里、点岸边都认，但得挨着水）",
+                    "' has no fishable water within " + SEARCH_RADIUS
+                            + " blocks (water edge or in-water both work, but it must be next to water)");
         }
         if (type == MeidoModeType.FARM) {
-            return "派活失败：「" + modeName + "」附近 " + SEARCH_RADIUS
-                    + " 格内没有能种的耕地（要先用锄头翻地，而且得有光照 —— 暗处种下去会自己消失）";
+            return MeidoLocale.pick("派活失败：「", "Assignment failed: '") + modeName + MeidoLocale.pick(
+                    "」附近 " + SEARCH_RADIUS
+                            + " 格内没有能种的耕地（要先用锄头翻地，而且得有光照 —— 暗处种下去会自己消失）",
+                    "' has no farmland within " + SEARCH_RADIUS
+                            + " blocks (till it with a hoe first, and it needs light — in the dark crops vanish on their own)");
         }
-        return "派活失败：「" + modeName + "」这里站不住人";
+        return MeidoLocale.pick("派活失败：「", "Assignment failed: '") + modeName
+                + MeidoLocale.pick("」这里站不住人", "' — can't stand here");
     }
 
     // ------------------------------------------------------------------

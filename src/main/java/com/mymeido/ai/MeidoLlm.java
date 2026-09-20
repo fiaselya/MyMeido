@@ -19,50 +19,54 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 
 import net.minecraft.server.MinecraftServer;
 
 /**
- * OpenAI 兼容的 chat/completions 客户端（三期 A3；2026-09-21 加流式与自定义头）。
+ * OpenAI-compatible chat/completions client (phase 3 A3; streaming + custom headers added 2026-09-21).
  *
- * <p>本地 llama-server 和远程 API 都是同一套协议 → 路由层（{@link MeidoAi}）
- * 对两者用同一个方法，不用写两遍（A3 硬要求 2）。
+ * <p>Both local llama-server and remote API speak the same protocol, so the routing layer
+ * ({@link MeidoAi}) calls both with one method, no need to write it twice (hard A3 requirement 2).
  *
- * <p>★ 全程异步（{@code sendAsync}）：网络等待发生在 HTTP 线程池上，
- * <b>主线程一帧都不阻塞</b>；回调统一经 {@code server.execute()} 弹回主线程，
- * 满足「API 失败/超时都不能让游戏卡住」的要求。零依赖 ——
- * HTTP 用 JDK 自带 {@link HttpClient}，JSON 用 MC 自带的 Gson。
+ * <p>★ Fully async ({@code sendAsync}): network waits happen on the HTTP thread pool, the
+ * <b>main thread is never blocked a single frame</b>; callbacks all bounce back to the main
+ * thread via {@code server.execute()}, satisfying "API failure/timeout must not stall the game".
+ * Zero dependencies -- HTTP uses JDK's own {@link HttpClient}, JSON uses MC's bundled Gson.
  *
- * <h2>★ 2026-09-21：为了「订阅制 API」补的两块</h2>
+ * <h2>★ 2026-09-21: two additions for "subscription APIs"</h2>
  *
- * <p>起因：原先的实现只能连<b>标准 OpenAI 端点</b>（Bearer 鉴权 + 非流式），
- * 而订阅制 / 客户端登录态复用的端点常常<b>不吃这两条</b>。实测（本机真跑）：
+ * <p>Background: the original implementation could only connect to <b>standard OpenAI endpoints</b>
+ * (Bearer auth + non-streaming), while subscription / client-session-reuse endpoints often
+ * <b>reject both</b>. Measured locally (actually run):
  * <pre>
- * stream=false → HTTP 400，正文说明「不支持非流式」
- * stream=true  → HTTP 200 Content-Type: text/event-stream，data: {...} 分片
+ * stream=false -> HTTP 400, body says "non-streaming unsupported"
+ * stream=true  -> HTTP 200 Content-Type: text/event-stream, data: {...} chunks
  * </pre>
- * 所以补了：
+ * So we added:
  * <ol>
- *   <li><b>{@code api_stream=true}</b> —— 走 SSE：逐行读 {@code data:}、把
- *       {@code choices[0].delta.content} 拼起来。默认 <b>false</b>（老配置行为一字不变）；</li>
- *   <li><b>{@code api_extra_headers}</b> —— 自定义请求头（{@code 名:值; 名:值}），
- *       解决「必须伪装 User-Agent / X-Product」「鉴权头不叫 Authorization」这类端点。</li>
+ *   <li><b>{@code api_stream=true}</b> -- SSE: read {@code data:} line by line, stitch
+ *       {@code choices[0].delta.content}. Default <b>false</b> (old config behavior unchanged);</li>
+ *   <li><b>{@code api_extra_headers}</b> -- custom request headers ({@code name:value; name:value}),
+ *       solving endpoints that "require a spoofed User-Agent / X-Product" or "auth header isn't Authorization".</li>
  * </ol>
- * 另外顺手修了一个高频踩坑：<b>base_url 已经带 {@code /chat/completions} 时不再重复拼</b>
- * （否则变成 {@code .../chat/completions/chat/completions} → 404，而报错看上去像「服务没起」）。
+ * Also fixed a frequent footgun: <b>when base_url already ends with {@code /chat/completions},
+ * don't append again</b> (otherwise it becomes {@code .../chat/completions/chat/completions}
+ * -> 404, and the error looks like "service not up").
  */
 public final class MeidoLlm {
 
-    /** 一条消息。role 取 "system" / "user" / "assistant"。 */
+    /** One message. role is "system" / "user" / "assistant". */
     public record Msg(String role, String content) {
     }
 
     /**
-     * 一次请求的全部参数。★ 收成一个 record 是为了<b>只有一个来源</b> ——
-     * 原先 3 处调用点各自手抄 6 个参数，加一个开关就要改三遍（必然漂移）。
+     * All params for one request. ★ Bundled into one record for a <b>single source of truth</b> --
+     * the old 3 call sites each hand-copied 6 params, so adding a switch meant editing three times
+     * (inevitable drift).
      *
-     * @param extraHeaders 形如 {@code [[名, 值], ...]}，按顺序 setHeader
+     * @param extraHeaders shape {@code [[name, value], ...]}, setHeader in order
      */
     public record Options(String baseUrl, String model, String apiKey, int timeoutMs,
             boolean stream, List<String[]> extraHeaders) {
@@ -75,8 +79,9 @@ public final class MeidoLlm {
             .build();
 
     /**
-     * 读 SSE 流用的线程池（守护线程，别拽住 JVM 退出）。
-     * 用 4 个线程：「对话」和「人设更新」本来就会并发（设计如此），别让它们互相排队。
+     * Thread pool for reading SSE streams (daemon threads, don't block JVM exit).
+     * 4 threads: "conversation" and "persona update" are inherently concurrent (by design),
+     * don't let them queue behind each other.
      */
     private static final ExecutorService STREAM_POOL = Executors.newFixedThreadPool(4, runnable -> {
         Thread thread = new Thread(runnable, "mymeido-llm-stream");
@@ -88,23 +93,24 @@ public final class MeidoLlm {
     }
 
     /**
-     * 发一次对话请求。
+     * Send one conversation request.
      *
-     * @param onSuccess 主线程回调，参数是模型的回复全文
-     * @param onError   主线程回调，参数是人类可读的失败原因（路由层拿去做回落与提示）
+     * @param onSuccess main-thread callback, arg is the model's full reply text
+     * @param onError   main-thread callback, arg is a human-readable failure reason
+     *                  (the routing layer uses it for fallback and hints)
      */
     public static void chat(MinecraftServer server, Options options, List<Msg> messages,
             Consumer<String> onSuccess, Consumer<String> onError) {
         JsonObject body = new JsonObject();
         body.addProperty("model", options.model());
-        // 女仆台词一两句就够 —— 限死长度，既快又不至于让她在聊天栏里刷屏。
+        // A maid's line of one or two sentences is enough -- cap the length: fast and won't spam chat.
         body.addProperty("max_tokens", 120);
-        // 2026-09-20 绯色反馈「智力太低」：0.9 对 4B 小模型太高，容易胡言；
-        // 降到 0.7 + top_p 0.9，回答更贴题。（都是 OpenAI 标准字段，远程 API 也吃。）
+        // 2026-09-20 Hisui feedback "too dumb": 0.9 is too high for a 4B small model, tends to ramble;
+        // dropped to 0.7 + top_p 0.9 for more on-topic answers. (Both are standard OpenAI fields, remote API eats them too.)
         body.addProperty("temperature", 0.7);
         body.addProperty("top_p", 0.9);
         if (options.stream()) {
-            // ★ 有些订阅端点不写 stream 就 400（见类注释的实测）。
+            // ★ Some subscription endpoints 400 without stream (see class-note measurement).
             body.addProperty("stream", true);
         }
         JsonArray array = new JsonArray();
@@ -119,7 +125,7 @@ public final class MeidoLlm {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint(options.baseUrl())))
                 .timeout(Duration.ofMillis(Math.max(1000, options.timeoutMs())));
-        // 自定义头先上，核心头随后 setHeader 覆盖 —— 规则是「mod 自己那几行永远说了算」。
+        // Custom headers first, then core headers setHeader over them -- rule: "the mod's own lines always win".
         applyExtraHeaders(builder, options.extraHeaders());
         builder.setHeader("Content-Type", "application/json");
         if (options.apiKey() != null && !options.apiKey().isBlank()) {
@@ -135,7 +141,7 @@ public final class MeidoLlm {
     }
 
     // ------------------------------------------------------------------
-    // 非流式（默认，行为与改前完全一致）
+    // Non-streaming (default, behavior identical to before the change)
     // ------------------------------------------------------------------
 
     private static void receiveWhole(MinecraftServer server, HttpRequest request, String model,
@@ -149,7 +155,9 @@ public final class MeidoLlm {
                     Whole whole = extractWhole(response.body());
                     if (whole.content() == null || whole.content().isBlank()) {
                         server.execute(() -> onError.accept(whole.reasoningSeen()
-                                ? reasoningOnly(model) : "回复是空的（响应不是 OpenAI 格式？）"));
+                                ? reasoningOnly(model)
+                                : MeidoLocale.pick("回复是空的（响应不是 OpenAI 格式？）",
+                                        "The reply is empty (response not in OpenAI format?)")));
                         return;
                     }
                     server.execute(() -> onSuccess.accept(cleanReply(whole.content())));
@@ -161,14 +169,14 @@ public final class MeidoLlm {
     }
 
     // ------------------------------------------------------------------
-    // 流式（SSE）：api_stream=true 时走这条
+    // Streaming (SSE): used when api_stream=true
     // ------------------------------------------------------------------
 
     private static void receiveStream(MinecraftServer server, HttpRequest request, String model,
             Consumer<String> onSuccess, Consumer<String> onError) {
         CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
-                // ★ 用 thenAcceptAsync 指定线程池：读流是阻塞的，绝不能在
-                //   HttpClient 自己的选择器线程上干（也绝不能碰服务端主线程）。
+                // ★ Use thenAcceptAsync with the pool: reading the stream is blocking, never do it
+                //   on HttpClient's own selector thread (and never touch the server main thread).
                 .thenAcceptAsync(response -> {
                     if (response.statusCode() / 100 != 2) {
                         String detail = response.body().limit(16).collect(Collectors.joining(" "));
@@ -179,19 +187,22 @@ public final class MeidoLlm {
                     try (Stream<String> lines = response.body()) {
                         lines.forEach(line -> appendDelta(line, fragments));
                     } catch (Exception e) {
-                        // 读到一半断了：已经收到内容就当成功（流式端点收尾断流很常见），
-                        // 一个字节都没收到才算失败。
+                        // Cut off mid-read: if we already got content, treat as success (stream endpoints
+                        // often drop the tail); only a single byte received counts as failure.
                         if (fragments.content.isEmpty()) {
                             server.execute(() -> onError.accept(
                                     e.getClass().getSimpleName() + ": " + e.getMessage()));
                             return;
                         }
-                        MyMeido.LOGGER.warn("[mymeido][ai] 流式读取中断，用已收到的内容收尾：{}", e.toString());
+                        MyMeido.LOGGER.warn("[mymeido][ai] stream read interrupted, finishing with received content: {}",
+                                e.toString());
                     }
                     String content = fragments.content.toString();
                     if (content.isBlank()) {
                         server.execute(() -> onError.accept(fragments.reasoning.length() > 0
-                                ? reasoningOnly(model) : "流式回复是空的（响应不是 OpenAI SSE 格式？）"));
+                                ? reasoningOnly(model)
+                                : MeidoLocale.pick("流式回复是空的（响应不是 OpenAI SSE 格式？）",
+                                        "The streaming reply is empty (response not in OpenAI SSE format?)")));
                         return;
                     }
                     server.execute(() -> onSuccess.accept(cleanReply(content)));
@@ -202,24 +213,24 @@ public final class MeidoLlm {
                 });
     }
 
-    /** 流式累计：正式台词 + 思考段（思考段只用于出错时说清原因，绝不进台词）。 */
+    /** Streaming accumulator: actual line + reasoning segment (reasoning only for error diagnosis, never into the line). */
     private static final class Fragments {
         private final StringBuilder content = new StringBuilder();
         private final StringBuilder reasoning = new StringBuilder();
     }
 
     /**
-     * 解析一行 SSE，把增量文本追加进去。
+     * Parse one SSE line, append the incremental text.
      *
-     * <p>只把 {@code choices[0].delta.content} 当台词：
-     * <b>刻意不碰 {@code reasoning_content}</b> —— 推理模型的思考段就在那个字段里，
-     * 取错了她会当场把推理过程念出来（当初 llama.cpp 的 {@code --reasoning-budget 0}
-     * 拦不住 Qwen3 就是这个坑）。
+     * <p>Only {@code choices[0].delta.content} counts as the line:
+     * <b>deliberately ignore {@code reasoning_content}</b> -- reasoning-model thinking lives in that
+     * field, and grabbing the wrong one makes her read the reasoning out loud (the old llama.cpp
+     * {@code --reasoning-budget 0} couldn't stop Qwen3 from doing exactly this).
      *
-     * <p>但 2026-09-21 实测发现一个新情况：<b>有的模型（推理型，如 {@code hy3}）
-     * 会把整段话都放进 {@code reasoning_content}，{@code content} 从头到尾是空的</b> ——
-     * 这时如果只回一句「回复是空的」，玩家根本不知道为什么。
-     * 所以思考段也收着，但<b>只用于出错时的诊断</b>（见 {@link #reasoningOnly}）。
+     * <p>But a 2026-09-21 measurement found a new case: <b>some models (reasoning-type, e.g. {@code hy3})
+     * put the entire reply into {@code reasoning_content}, with {@code content} empty throughout</b> --
+     * if we only said "reply is empty", the player wouldn't know why.
+     * So we also collect the reasoning segment, but <b>only for error diagnosis</b> (see {@link #reasoningOnly}).
      */
     private static void appendDelta(String line, Fragments out) {
         if (line == null) {
@@ -227,7 +238,7 @@ public final class MeidoLlm {
         }
         String trimmed = line.trim();
         if (!trimmed.startsWith("data:")) {
-            return;   // 空行、注释行（: keep-alive）、event: 行都跳过
+            return;   // blank lines, comment lines (: keep-alive), event: lines all skipped
         }
         String payload = trimmed.substring("data:".length()).trim();
         if (payload.isEmpty() || "[DONE]".equals(payload)) {
@@ -246,7 +257,7 @@ public final class MeidoLlm {
             appendIfPresent(delta.get("content"), out.content);
             appendIfPresent(delta.get("reasoning_content"), out.reasoning);
         } catch (Exception ignored) {
-            // 单个分片坏掉不影响整体（有的服务商会在流里插非 JSON 的心跳）
+            // One bad chunk doesn't break the whole (some providers insert non-JSON heartbeats in the stream)
         }
     }
 
@@ -257,14 +268,14 @@ public final class MeidoLlm {
     }
 
     // ------------------------------------------------------------------
-    // 小工具
+    // Small helpers
     // ------------------------------------------------------------------
 
-    /** 非流式响应的提取结果：台词 + 有没有看到思考段（后者只用于诊断）。 */
+    /** Non-streaming extraction result: line + whether a reasoning segment was seen (latter only for diagnosis). */
     private record Whole(String content, boolean reasoningSeen) {
     }
 
-    /** 取 choices[0].message.content（顺带看一眼有没有 reasoning_content）；结构对不上返回空。 */
+    /** Take choices[0].message.content (and peek at reasoning_content); null if structure mismatches. */
     private static Whole extractWhole(String json) {
         try {
             JsonObject root = JsonParser.parseString(json).getAsJsonObject();
@@ -288,24 +299,26 @@ public final class MeidoLlm {
     }
 
     /**
-     * 「只回了思考段」的说明。
+     * Explanation for "only a reasoning segment returned".
      *
-     * <p>实测（2026-09-21）：有的推理型模型（如 {@code hy3}）会把整段话都塞进
-     * {@code reasoning_content}、{@code content} 从头到尾为空 —— 换
-     * {@code deepseek-v4.1-flash} 就正常。如果只说「回复是空的」，
-     * 玩家会去怀疑地址/密钥，根本想不到是模型选错了。
+     * <p>Measured (2026-09-21): some reasoning models (e.g. {@code hy3}) put the entire reply into
+     * {@code reasoning_content} with {@code content} empty throughout -- switching to
+     * {@code deepseek-v4.1-flash} works normally. If we only said "reply is empty", the player would
+     * suspect the address/key and never think the model was the wrong choice.
      */
     private static String reasoningOnly(String model) {
-        MyMeido.LOGGER.warn("[mymeido][ai] 模型「{}」只回思考段（reasoning_content），没有正式台词；"
-                + "这是推理型模型的行为，换一个非推理模型即可", model);
-        return "她只回了思考段没给台词 —— 模型「" + model + "」是推理型的，"
-                + "换一个非推理的（例：deepseek-v4.1-flash / glm-5.3-flash）";
+        MyMeido.LOGGER.warn("[mymeido][ai] model '{}' returned only a reasoning segment (reasoning_content) "
+                + "with no actual line; this is reasoning-model behavior, switch to a non-reasoning model", model);
+        return MeidoLocale.pick(
+                "她只回了思考段没给台词 —— 模型「" + model + "」是推理型的，换一个非推理的（例：deepseek-v4.1-flash / glm-5.3-flash）",
+                "She only returned a reasoning segment with no line -- model '" + model + "' is a reasoning model; "
+                        + "switch to a non-reasoning one (e.g. deepseek-v4.1-flash / glm-5.3-flash)");
     }
 
     /**
-     * 把 base_url 拼成真正的端点。
-     * ★ 已经以 {@code /chat/completions} 结尾就<b>原样用</b> ——
-     * 玩家十有八九会把全路径粘进来，再拼一次就是 404（而且看起来像「服务没起」）。
+     * Build the real endpoint from base_url.
+     * ★ If it already ends with {@code /chat/completions}, use it <b>as-is</b> --
+     * players almost always paste the full path, appending again yields 404 (and looks like "service down").
      */
     static String endpoint(String baseUrl) {
         String base = baseUrl == null ? "" : baseUrl.trim();
@@ -319,8 +332,9 @@ public final class MeidoLlm {
     }
 
     /**
-     * 自定义请求头的解析（{@code 名:值; 名:值}）。
-     * 值里可以带冒号（只按<b>第一个</b>冒号切）；空项跳过；名字非法只影响那一条。
+     * Custom request header parsing ({@code name:value; name:value}).
+     * Value may contain colons (split on the <b>first</b> colon only); empty items skipped;
+     * an illegal name only affects that one item.
      */
     static List<String[]> parseHeaders(String raw) {
         List<String[]> out = new java.util.ArrayList<>();
@@ -334,7 +348,7 @@ public final class MeidoLlm {
             }
             int colon = item.indexOf(':');
             if (colon <= 0) {
-                MyMeido.LOGGER.warn("[mymeido][ai] api_extra_headers 里这一项没有冒号，已跳过：{}", item);
+                MyMeido.LOGGER.warn("[mymeido][ai] api_extra_headers item has no colon, skipped: {}", item);
                 continue;
             }
             out.add(new String[] { item.substring(0, colon).trim(), item.substring(colon + 1).trim() });
@@ -350,8 +364,8 @@ public final class MeidoLlm {
             try {
                 builder.setHeader(header[0], header[1]);
             } catch (IllegalArgumentException e) {
-                // JDK 禁止设置 connection / content-length / host 等这几个；只跳过这一条。
-                MyMeido.LOGGER.warn("[mymeido][ai] 自定义头「{}」被 JDK 拒绝（{}），已跳过",
+                // JDK forbids setting connection / content-length / host etc.; only skip that one.
+                MyMeido.LOGGER.warn("[mymeido][ai] custom header '{}' rejected by JDK ({}), skipped",
                         header[0], e.getMessage());
             }
         }
@@ -365,14 +379,14 @@ public final class MeidoLlm {
     private static void fail(MinecraftServer server, Consumer<String> onError, Throwable throwable) {
         Throwable cause = throwable.getCause() != null ? throwable.getCause() : throwable;
         String message = cause.getClass().getSimpleName() + ": " + cause.getMessage();
-        MyMeido.LOGGER.warn("[mymeido][ai] 请求异常：{}", message);
+        MyMeido.LOGGER.warn("[mymeido][ai] request exception: {}", message);
         server.execute(() -> onError.accept(message));
     }
 
     /**
-     * 小模型的坏习惯兜底：剥掉 markdown 代码围栏和首尾引号。
-     * ★ 还要剥 {@code <think>…</think>} —— 万一哪个模型/模板把思考段漏进 content
-     *   （b11062 的 --reasoning-budget 0 就拦不住），她会在聊天栏里念推理过程。
+     * Small-model bad-habit guard: strip markdown code fences and surrounding quotes.
+     * ★ Also strip {@code <think>...</think>} -- in case some model/template leaks the thinking segment
+     * into content (b11062's --reasoning-budget 0 couldn't stop it), she'd read reasoning aloud in chat.
      */
     private static String cleanReply(String text) {
         String out = text.trim();
@@ -381,7 +395,7 @@ public final class MeidoLlm {
             int thinkEnd = out.indexOf("</think>", thinkStart);
             out = thinkEnd >= 0
                     ? out.substring(0, thinkStart) + out.substring(thinkEnd + "</think>".length())
-                    // 只有开头没闭合：整段当思考扔掉
+                    // Only an unclosed opening: drop the whole thing as thinking.
                     : out.substring(0, thinkStart);
         }
         if (out.startsWith("```")) {

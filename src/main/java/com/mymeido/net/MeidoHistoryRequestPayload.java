@@ -1,6 +1,7 @@
 package com.mymeido.net;
 
 import com.mymeido.MeidoConst;
+import com.mymeido.MeidoLocale;
 import com.mymeido.entity.MeidoEntity;
 import com.mymeido.item.CommandAlarmItem;
 
@@ -45,8 +46,9 @@ public record MeidoHistoryRequestPayload() implements CustomPayload {
     private static void handle(ServerPlayerEntity player) {
         MeidoEntity meido = CommandAlarmItem.findNearest(player);
         if (meido == null) {
-            player.sendMessage(Text.literal(
-                    "[mymeido] 附近没有女仆，没有对话可看。先 /mymeido summon 召一只"), false);
+            player.sendMessage(Text.literal(MeidoLocale.pick(
+                    "[mymeido] 附近没有女仆，没有对话可看。先 /mymeido summon 召一只",
+                    "[mymeido] No maid nearby, nothing to read. Summon one with /mymeido summon first")), false);
             return;
         }
 
@@ -54,21 +56,22 @@ public record MeidoHistoryRequestPayload() implements CustomPayload {
         String summary = meido.getAiSummary();
         if (!summary.isEmpty()) {
             // 摘要是「很久以前就聊过」的部分，排在最上面当地基。
-            out.append("〔记忆要点〕\n").append(summary).append("\n\n");
+            out.append(MeidoLocale.pick("〔记忆要点〕", "[Memory Highlights]")).append("\n").append(summary).append("\n\n");
         }
-        out.append("〔近期对话〕");
+        out.append(MeidoLocale.pick("〔近期对话〕", "[Recent Chat]"));
         var history = meido.aiHistory();
         synchronized (history) {
             if (history.isEmpty() && summary.isEmpty()) {
-                player.sendMessage(Text.literal(
-                        "[mymeido] " + meido.characterName() + " 还没跟你聊过天（右键打招呼或按 G 说话）"), false);
+                player.sendMessage(Text.literal(MeidoLocale.pick(
+                        "[mymeido] " + meido.characterName() + " 还没跟你聊过天（右键打招呼或按 G 说话）",
+                        "[mymeido] " + meido.characterName() + " hasn't talked to you yet (right-click to greet or press G to speak)")), false);
                 return;
             }
             for (String[] entry : history) {
                 out.append('\n');
                 // 客户端拿到的是纯文本，谁在说话靠前缀区分（user = 主人）。
-                out.append("user".equals(entry[0]) ? "你" : meido.characterName())
-                        .append("：").append(entry[1]);
+                out.append("user".equals(entry[0]) ? MeidoLocale.pick("你", "You") : meido.characterName())
+                        .append(MeidoLocale.pick("：", ": ")).append(entry[1]);
             }
         }
 

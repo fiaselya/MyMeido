@@ -89,7 +89,7 @@ public final class MeidoSkinManager {
     private static Identifier load(MeidoSkin skin) {
         Path file = find(skin);
         if (file == null) {
-            MyMeido.LOGGER.warn("[mymeido] 皮肤目录里找不到 {}，回落原版 Steve。目录：{}",
+            MyMeido.LOGGER.warn("[mymeido] skin not found in directory {}: falling back to vanilla Steve. dir: {}",
                     skin.fileName(), MeidoSkinRegistry.dir());
             return FALLBACK;
         }
@@ -98,11 +98,11 @@ public final class MeidoSkinManager {
             Identifier id = MeidoConst.id(texturePath(skin));
             MinecraftClient.getInstance().getTextureManager()
                     .registerTexture(id, new NativeImageBackedTexture(image));
-            MyMeido.LOGGER.info("[mymeido] 已加载皮肤 {}：{} -> {}",
+            MyMeido.LOGGER.info("[mymeido] loaded skin {}: {} -> {}",
                     skin.getId(), file.getFileName(), id);
             return id;
         } catch (IOException | RuntimeException e) {
-            MyMeido.LOGGER.warn("[mymeido] 皮肤 {} 加载失败，回落原版 Steve：{}",
+            MyMeido.LOGGER.warn("[mymeido] failed to load skin {}, falling back to vanilla Steve: {}",
                     skin.getId(), e.toString());
             return FALLBACK;
         }

@@ -57,6 +57,9 @@ public class MyMeidoClient implements ClientModInitializer {
     public void onInitializeClient() {
         EntityRendererRegistry.register(MyMeidoEntities.MEIDO, MeidoEntityRenderer::new);
         MeidoSkinManager.init();
+        // 语言上报：把游戏当前语言告诉公共端（它自己读不到客户端类），
+        // 并挂在资源重载钩子上 —— 玩家在选项里换语言后按 F3+T 即跟着变。
+        MeidoLocaleClient.init();
         MeidoEmotionFx.init();
         // 闹钟本体在主源集（专用服务器也要编译），那里一个 net.minecraft.client.* 都不能出现。
         // 所以两件「只有客户端才有意义」的事都从这儿装进去：
@@ -76,7 +79,8 @@ public class MyMeidoClient implements ClientModInitializer {
         });
         MeidoHistoryScreen.registerS2C(); // 历史面板的 S2C 回包（C2S 请求包在主入口注册）
 
-        MyMeido.LOGGER.info("[mymeido] 客户端初始化完成：渲染器 / 皮肤池 / 情绪粒子 / 模式选择界面 / 对话输入框已装载");
+        MyMeido.LOGGER.info("[mymeido] client init done: renderer / skins / emotion fx / mode screen"
+                + " / chat box loaded; language={}", com.mymeido.MeidoLocale.code());
     }
 
     /**

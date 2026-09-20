@@ -3,6 +3,7 @@ package com.mymeido.client.screen;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.net.MeidoHistoryPayload;
 import com.mymeido.net.MeidoHistoryRequestPayload;
 
@@ -36,7 +37,7 @@ public class MeidoHistoryScreen extends Screen {
     private int scroll;
 
     public MeidoHistoryScreen() {
-        super(Text.literal("对话记录"));
+        super(Text.literal(MeidoLocale.pick("对话记录", "Chat History")));
     }
 
     /** 客户端入口注册（S2C 接收）：回包进收件箱，若面板正开着直接触发重画数据。 */
@@ -78,7 +79,8 @@ public class MeidoHistoryScreen extends Screen {
 
         if (this.lines.isEmpty()) {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("正在向她翻记忆……（附近没有女仆的话会直接在聊天栏提示）")
+                    Text.literal(MeidoLocale.pick("正在向她翻记忆……（附近没有女仆的话会直接在聊天栏提示）",
+                            "Flipping through her memory... (if no maid is nearby, a chat hint will appear directly)"))
                             .formatted(Formatting.GRAY),
                     this.width / 2, this.height / 2 - 20, 0xFFFFFF);
             super.render(context, mouseX, mouseY, delta);
@@ -96,15 +98,16 @@ public class MeidoHistoryScreen extends Screen {
         for (int i = this.scroll; i < this.lines.size() && y < areaBottom; i++, y += lineHeight) {
             String line = this.lines.get(i);
             // 摘要行和「谁在说话」用不同颜色：记忆要点淡金、主人淡蓝、她的话白。
-            int color = line.startsWith("〔") ? 0xE8C170
-                    : line.startsWith("你：") ? 0x9FC5FF
+            int color = line.startsWith("〔") || line.startsWith("[") ? 0xE8C170
+                    : line.startsWith("你：") || line.startsWith("You:") ? 0x9FC5FF
                     : 0xFFFFFF;
             context.drawTextWithShadow(this.textRenderer, line, 20, y, color);
         }
 
         if (this.lines.size() > visible) {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("（滚轮翻页 " + (this.scroll + 1) + "/" + this.lines.size() + "）")
+                    Text.literal(MeidoLocale.pick("（滚轮翻页 " + (this.scroll + 1) + "/" + this.lines.size() + "）",
+                            "(scroll to page " + (this.scroll + 1) + "/" + this.lines.size() + ")"))
                             .formatted(Formatting.DARK_GRAY),
                     this.width / 2, Math.min(areaBottom + 4, this.height - 10), 0xFFFFFF);
         }

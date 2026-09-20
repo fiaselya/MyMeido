@@ -1,5 +1,6 @@
 package com.mymeido.net;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.item.MeidoContractItem;
 
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
@@ -53,17 +54,20 @@ public final class MeidoOnboarding {
 
     private static void onJoin(ServerPlayerEntity player) {
         if (MeidoContractItem.hasContract(player)) {
-            player.sendMessage(Text.literal(
-                    "[mymeido] 你身上还有一张女仆契约 —— 右键它就能创造一位女仆。")
-                    .formatted(Formatting.GRAY), true);
+            player.sendMessage(Text.literal(MeidoLocale.pick(
+                    "[mymeido] 你身上还有一张女仆契约 —— 右键它就能创造一位女仆。",
+                    "[mymeido] You still have a maid contract on you -- right-click it to create a maid.")
+                    ).formatted(Formatting.GRAY), true);
             return;
         }
         boolean inInventory = MeidoContractItem.grant(player);
-        player.sendMessage(Text.literal(
-                "[mymeido] 给你一张「女仆契约」：右键它 → 在聊天栏选编号 → 她就出现了。")
-                .formatted(Formatting.AQUA), false);
+        player.sendMessage(Text.literal(MeidoLocale.pick(
+                "[mymeido] 给你一张「女仆契约」：右键它 → 在聊天栏选编号 → 她就出现了。",
+                "[mymeido] Here is a 'maid contract': right-click it -> pick a number in chat -> she appears.")
+                ).formatted(Formatting.AQUA), false);
         if (!inInventory) {
-            player.sendMessage(Text.literal("[mymeido] （背包满了，契约掉在你脚边）")
+            player.sendMessage(Text.literal(MeidoLocale.pick("[mymeido] （背包满了，契约掉在你脚边）",
+                    "[mymeido] (Inventory is full, the contract dropped at your feet)"))
                     .formatted(Formatting.YELLOW), false);
         }
     }

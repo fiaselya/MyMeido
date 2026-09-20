@@ -7,41 +7,47 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
+import com.mymeido.MeidoLocale;
 import com.mymeido.MyMeido;
 
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * 对话配置（2026-09-20 大改：★ mod 不再绑定任何模型，只认「玩家给的一个 API」）。
+ * Conversation config (major rework 2026-09-20: ★ the mod no longer binds to any model,
+ * it only trusts "one API the player provides").
  *
- * <h2>两种状态，没有第三种</h2>
+ * <h2>Two states, no third</h2>
  * <ol>
- *   <li><b>基础模式</b>（{@code api_base_url} 或 {@code api_model} 没填）——
- *       mod 完全不联网：她只会用自带台词回应你的<b>点击</b>（右键打招呼）；
- *       <b>不回复你在聊天栏说的话</b>。零配置、零依赖、开箱即玩；</li>
- *   <li><b>API 模式</b>（两者都填了）—— 她的发言接入这个 API：打招呼会生成台词，
- *       你对她说话她会回。本地跑的还是云上的都行，只要说 OpenAI 兼容协议。</li>
+ *   <li><b>Basic mode</b> ({@code api_base_url} or {@code api_model} left blank) ——
+ *       the mod never touches the network: she only answers your <b>clicks</b>
+ *       (right-click greeting) with built-in lines; <b>she does not reply to what you
+ *       type in chat</b>. Zero config, zero dependency, play out of the box;</li>
+ *   <li><b>API mode</b> (both filled) —— her speech is routed to this API: greetings
+ *       get generated lines, and she replies when you talk to her. Local or cloud
+ *       both work, as long as it speaks the OpenAI-compatible protocol.</li>
  * </ol>
  *
- * <p>★ 与上一版的区别：删掉了 {@code api_mode} 本地/混合/纯API 三态、
- * {@code local_*} 全套与「mod 替玩家拉起 llama-server」——
- * 上一版等于把 mod 和一个具体模型（Qwen3-4B GGUF + llama.cpp）绑死了，
- * 换模型要改一堆键。现在只有一组 {@code api_*}：填什么连什么。
+ * <p>★ Difference from the previous version: removed the old {@code api_mode}
+ * local/hybrid/pure-API tri-state, the whole {@code local_*} set and "mod launches
+ * llama-server for the player" —— the old version hard-bound the mod to one concrete
+ * model (Qwen3-4B GGUF + llama.cpp); switching models meant editing a pile of keys.
+ * Now there is only one group of {@code api_*}: fill what you connect to.
  *
- * <p>格式仍是「记事本就能改」的 {@code 键=值} 纯文本（解析手写，为的是原样保留中文注释）。
- * 缺项走默认值，某行写错只跳过那一行。
+ * <p>Format is still "notebook-editable" {@code key=value} plain text (hand-written
+ * parser, so the Chinese comments are preserved verbatim). Missing items fall back to
+ * defaults; a bad line only skips that line.
  */
 public final class MeidoAiConfig {
 
     private static final Path CONFIG_FILE =
             FabricLoader.getInstance().getConfigDir().resolve("mymeido").resolve("chat").resolve("api.txt");
 
-    /** 旧版配置（本地/远程双后端那套），只用来提示玩家迁移。 */
+    /** Old config (local/remote dual-backend set), only used to nudge the player to migrate. */
     private static final Path LEGACY_FILE =
             FabricLoader.getInstance().getConfigDir().resolve("mymeido").resolve("models").resolve("backend.txt");
 
-    /** 首次生成用的模板。头三行是明文密钥警告。 */
-    private static final String TEMPLATE = """
+    /** First-run template (ZH). The first three lines are a plaintext-key warning. */
+    private static final String TEMPLATE_ZH = """
             # ⚠️⚠️⚠️ 警告：如果你在 api_key 里填了密钥，这个文件里就是【明文密钥】。
             # ⚠️ 不要把这个文件截图、发群、发给别人 —— 等于把你的 API 账号送出去。
             # ==================================================================
@@ -120,6 +126,95 @@ public final class MeidoAiConfig {
             proactive_max_per_hour=2
             """;
 
+    /** First-run template (EN). Mirrors TEMPLATE_ZH; only the comments differ. */
+    private static final String TEMPLATE_EN = """
+            # WARNING: if you put a secret key in api_key, it is stored here in PLAINTEXT.
+            # Do NOT screenshot, post, or share this file -- that hands out your API account.
+            # ==================================================================
+            #
+            # This mod is not tied to any model. Fill the card below = she chats via the API;
+            # leave it blank = basic mode: she only answers your clicks with built-in lines,
+            # and does not reply to what you type.
+            #
+            # ============ Fill these three lines to use ============
+            # api_base_url  OpenAI-compatible endpoint address, must end with /v1
+            #   local e.g.: http://127.0.0.1:8080/v1   (llama.cpp / LM Studio / ollama all work)
+            #   cloud e.g.: https://api.deepseek.com/v1
+            # api_key       usually required for cloud; can be left blank for local
+            # api_model     the model actually loaded on the service, e.g. qwen3-4b / deepseek-chat / gpt-4o-mini
+            #
+            # Example (local llama.cpp, port 8080):
+            #   api_base_url=http://127.0.0.1:8080/v1
+            #   api_model=qwen3-4b
+            # Example (cloud):
+            #   api_base_url=https://api.deepseek.com/v1
+            #   api_key=sk-your-key
+            #   api_model=deepseek-chat
+            #
+            # After editing, run /mymeido aireload in-game to apply; /mymeido aistatus shows current state;
+            # /mymeido aiguide explains "how to get a service running".
+            api_base_url=
+            api_key=
+            api_model=
+
+            # ============ Subscription / special endpoints (usually ignore) ============
+            #
+            # This mod sends requests as a "standard OpenAI endpoint" by default: Bearer auth
+            # + one-shot full JSON. Some "subscription" endpoints break this, e.g.:
+            #   - reject non-streaming (400 without stream) -- typical of private endpoints reusing
+            #     a client login session;
+            #   - auth header is not Authorization, or requires a spoofed User-Agent / product name.
+            # The two lines below are switches for these cases.
+            #
+            # api_stream  switch to streaming (SSE). Turn on if the other side says "non-streaming unsupported".
+            #             true  = receive SSE chunks and stitch them (result is identical to her)
+            #             false (default) = wait for the full response at once
+            api_stream=false
+            #
+            # api_extra_headers  extra request headers, format "name:value; name:value" (semicolon separated,
+            #                    only the first colon counts).
+            #   e.g. (endpoint requiring spoofed client headers):
+            #     api_extra_headers=User-Agent:CLI/1.0 Client/1.0; X-Product:SaaS
+            #   e.g. (endpoint whose auth header is not Authorization):
+            #     api_extra_headers=x-api-key:your-key
+            #   note: Content-Type and Authorization are written by the mod; same-named headers here are overridden.
+            api_extra_headers=
+            #
+            # TIP: api_base_url only needs to reach the /v1 level (the mod appends /chat/completions itself);
+            #   if you pasted the full .../chat/completions, that is fine too -- it will not be duplicated.
+
+            # ============ Optional ============
+            # Per-request timeout (ms). 15000 for local small models; 8000 is enough for cloud API.
+            api_timeout_ms=15000
+            # Her speech uses plain white text (false = character-specific color). /mymeido chatstyle toggles it too, and writes back here.
+            chat_plain=false
+            # After each conversation, let her "incidentally" refresh the persona card (learns new catchphrases/likes
+            # from the chat, written into the auto block of config/mymeido/personas/<skin>.txt).
+            # Note: this makes her send one extra request per conversation -- for per-call billed cloud APIs you can
+            # turn it off; after turning off you can still run /mymeido persona extract manually.
+            persona_auto_update=true
+
+            # ============ Proactive chat (on by default, only effective in API mode) ============
+            #
+            # How it works: the player who created her with the "maid contract" stays near her long enough,
+            # and she walks over to say something (only in daytime; leaves you alone at night).
+            # The line is generated live by the API, carrying your current relationship mood and avoiding
+            # recently said lines.
+            # NOTE: without an API (basic mode) this does nothing -- she won't speak on her own and won't consume a count.
+            # Check effect live / debug why she didn't speak: /mymeido proactive
+            proactive_chat=true
+            # How many [seconds] near her before one trigger. Default 300 = 5 minutes.
+            # Set to 15 to see the effect faster; the creating player leaving 32 blocks only pauses the timer, not reset.
+            proactive_interval_seconds=300
+            # Max proactive lines per hour (in-game hour = 1000 ticks).
+            proactive_max_per_hour=2
+            """;
+
+    /** Resolves the template for the current language at call time. */
+    private static String template() {
+        return MeidoLocale.pick(TEMPLATE_ZH, TEMPLATE_EN);
+    }
+
     private static String baseUrl = "";
     private static String apiKey = "";
     private static String model = "";
@@ -135,27 +230,27 @@ public final class MeidoAiConfig {
     private MeidoAiConfig() {
     }
 
-    /** 服务端启动 / {@code /mymeido aireload} 时调用。文件不存在就生成模板。 */
+    /** Called on server start / {@code /mymeido aireload}. Generates the template if the file is missing. */
     public static synchronized void load() {
         try {
             if (!Files.exists(CONFIG_FILE)) {
                 Files.createDirectories(CONFIG_FILE.getParent());
-                Files.writeString(CONFIG_FILE, TEMPLATE, StandardCharsets.UTF_8);
-                MyMeido.LOGGER.info("[mymeido] 已生成对话配置模板：{}", CONFIG_FILE);
+                Files.writeString(CONFIG_FILE, template(), StandardCharsets.UTF_8);
+                MyMeido.LOGGER.info("[mymeido] generated chat config template: {}", CONFIG_FILE);
             }
             parse();
             if (Files.exists(LEGACY_FILE)) {
-                MyMeido.LOGGER.warn("[mymeido] 检测到旧版配置 {} —— 新版本不再读它（改读 chat/api.txt），"
-                        + "里面若是本地模型那套 local_* 键，新版已全部废弃；"
-                        + "想继续用就把 api_base_url / api_model 填进新文件", LEGACY_FILE);
+                MyMeido.LOGGER.warn("[mymeido] found legacy config {} -- the new version no longer reads it "
+                        + "(now reads chat/api.txt); if it had the old local_* model keys, they are all removed; "
+                        + "to keep using, fill api_base_url / api_model into the new file", LEGACY_FILE);
             }
         } catch (IOException e) {
-            MyMeido.LOGGER.error("[mymeido] 读对话配置失败，按基础模式跑：{}", e.toString());
+            MyMeido.LOGGER.error("[mymeido] failed to read chat config, falling back to basic mode: {}", e.toString());
             applyDefaults();
         }
     }
 
-    /** 按行解析。任何一行坏掉只跳过那一行。 */
+    /** Parses line by line. A bad line only skips that line. */
     private static void parse() throws IOException {
         applyDefaults();
         List<String> lines = Files.readAllLines(CONFIG_FILE, StandardCharsets.UTF_8);
@@ -177,18 +272,19 @@ public final class MeidoAiConfig {
                 case "chat_plain" -> plainChat = value.equalsIgnoreCase("true");
                 case "persona_auto_update" -> autoPersonaUpdate = value.equalsIgnoreCase("true");
                 case "proactive_chat" -> proactiveChat = value.equalsIgnoreCase("true");
-                // 兜底值刻意给「默认」而不是「关」：写错一个数字不该让整个功能静默消失。
+                // Fallback value is deliberately "default" rather than "off": a wrong number
+                // shouldn't silently kill the whole feature.
                 case "proactive_interval_seconds" ->
                         proactiveIntervalSeconds = clampInt(parseIntOr(value, 300), 5, 86_400);
                 case "proactive_max_per_hour" ->
                         proactiveMaxPerHour = clampInt(parseIntOr(value, 2), 0, 100);
                 default -> {
-                    // 认不出的键直接忽略 —— 包括旧版的 api_mode / local_* / remote_*。
+                    // Unknown keys are ignored -- including the old api_mode / local_* / remote_*.
                 }
             }
         }
         if (!baseUrl.isEmpty() && !model.isEmpty() && MyMeido.LOGGER.isDebugEnabled()) {
-            MyMeido.LOGGER.debug("[mymeido] API 模式：{} / {}", baseUrl, model);
+            MyMeido.LOGGER.debug("[mymeido] API mode: {} / {}", baseUrl, model);
         }
     }
 
@@ -214,16 +310,17 @@ public final class MeidoAiConfig {
         }
     }
 
-    /** 把数字夹进合理区间 —— 配置是记事本手写的，0 秒或 -1 次这种值要让它们变回人话。 */
+    /** Clamps a number into a sane range -- the config is hand-edited in Notepad, so 0s or -1s
+     *  should be turned back into something human. */
     private static int clampInt(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
 
     // ------------------------------------------------------------------
-    // 只读访问器（MeidoAi 路由用）
+    // Read-only accessors (used by MeidoAi routing)
     // ------------------------------------------------------------------
 
-    /** ★ 判据只有一条：地址和模型名都填了，才认为玩家接好了 API。 */
+    /** ★ The only judgment: both address and model name filled => the player connected an API. */
     public static synchronized boolean aiEnabled() {
         return !baseUrl.isBlank() && !model.isBlank();
     }
@@ -248,55 +345,59 @@ public final class MeidoAiConfig {
         return plainChat;
     }
 
-    /** 每轮对话后是否自动让 API 更新人设卡（关掉仍可手动 /mymeido persona extract）。 */
+    /** Whether to let the API refresh the persona card after each conversation
+     *  (can still run /mymeido persona extract manually when off). */
     public static synchronized boolean autoPersonaUpdate() {
         return autoPersonaUpdate;
     }
 
-    /** 是否走 SSE 流式（{@code api_stream}）。默认关 —— 老配置行为一字不变。 */
+    /** Whether to use SSE streaming ({@code api_stream}). Default off -- old config behavior unchanged. */
     public static synchronized boolean stream() {
         return stream;
     }
 
-    /** {@code api_extra_headers} 的原始文本（未解析）。 */
+    /** Raw text of {@code api_extra_headers} (unparsed). */
     public static synchronized String extraHeadersRaw() {
         return extraHeaders;
     }
 
-    /** 已解析的自定义请求头（{@code [[名, 值], ...]}）。 */
+    /** Parsed custom headers ({@code [[name, value], ...]}). */
     public static synchronized List<String[]> extraHeaders() {
         return MeidoLlm.parseHeaders(extraHeaders);
     }
 
-    /** 她会不会主动搭话（总开关）。注意：这个开关**不能**替代 {@link #aiEnabled()} —— 见下面的组合判据。 */
+    /** Whether she chats proactively (master switch). Note: this switch does NOT replace
+     *  {@link #aiEnabled()} -- see the combined judgment below. */
     public static synchronized boolean proactiveChat() {
         return proactiveChat;
     }
 
-    /** 停留多少秒触发一次。 */
+    /** Seconds to stay before a trigger. */
     public static synchronized int proactiveIntervalSeconds() {
         return proactiveIntervalSeconds;
     }
 
-    /** 每小时最多几次。 */
+    /** Max times per hour. */
     public static synchronized int proactiveMaxPerHour() {
         return proactiveMaxPerHour;
     }
 
     /**
-     * ★ 「她会不会主动搭话」的<b>唯一</b>判据 = 开关开着 <b>且</b> 接了 API。
+     * ★ The <b>only</b> judgment for "will she chat proactively" = switch on <b>and</b> API connected.
      *
-     * <p>为什么不只看 {@link #proactiveChat()}：主动搭话的台词是让 API 现想的（设计上就必须不重复、
-     * 还要按好感度来），基础模式没有 API 就没法满足这两条。与其退化成几句写死的台词天天重复，
-     * 不如<b>基础模式下干脆不主动开口</b> —— 这也和「基础模式只有自带点击台词」的定稿一致。
+     * <p>Why not just {@link #proactiveChat()}: the proactive line is generated live by the API
+     * (by design it must be non-repeating and mood-aware), so basic mode -- with no API -- can't
+     * satisfy either. Rather than degrade to a few hardcoded lines repeated daily, it is better to
+     * <b>simply stay silent in basic mode</b> -- consistent with the finalized "basic mode only has
+     * built-in click lines".
      */
     public static synchronized boolean proactiveEnabled() {
         return proactiveChat && aiEnabled();
     }
 
     /**
-     * ★ 一次请求的全部参数，收成一个对象 —— 3 个调用点共用，
-     * 以后再加开关只改这里，不用满世界找 {@code MeidoLlm.chat(} 的三处手抄。
+     * ★ One object holding all request params -- shared by 3 call sites, so adding a switch later
+     *  only touches here instead of hunting down the three hand-copied {@code MeidoLlm.chat(} calls.
      */
     public static synchronized MeidoLlm.Options llmOptions() {
         return new MeidoLlm.Options(baseUrl, model, apiKey, timeoutMs, stream, MeidoLlm.parseHeaders(extraHeaders));
@@ -307,63 +408,131 @@ public final class MeidoAiConfig {
     }
 
     /**
-     * 没接 API 时给玩家的一句说明（聊天栏一次性提示用）；接了 API 返回空串。
+     * A one-shot chat hint shown when no API is connected; empty string when an API is connected.
      */
     public static synchronized String statusHint() {
         if (aiEnabled()) {
             return "";
         }
-        return "还没有接上 API，她只会用自带台词回应你的点击（/mymeido aiguide 看怎么接）";
+        return MeidoLocale.pick(
+                "还没有接上 API，她只会用自带台词回应你的点击（/mymeido aiguide 看怎么接）",
+                "No API connected yet -- she will only reply to your clicks with built-in lines "
+                        + "(use /mymeido aiguide to see how to connect one)");
     }
 
     /**
-     * 「怎么把 API 跑起来」的说明（{@code /mymeido aiguide} 与文档共用一份，改不散）。
-     * 本 mod 不下载、不启动任何模型 —— 只告诉玩家去哪儿弄、填哪几行。
+     * "How to get an API running" guide (shared by {@code /mymeido aiguide} and docs, edited in one place).
+     * This mod does not download or launch any model -- it only tells the player where to get one
+     * and which lines to fill.
      */
     public static List<String> guideLines() {
         return List.of(
-                "本 mod 不绑定模型。要让她会聊天，你自己起一个 OpenAI 兼容服务，然后把地址填给她：",
-                "──── 路线 A：本地服务（免费、断网可用）────",
-                "① 起服务，三选一：",
-                "   · llama.cpp：llama-server -m 你的模型.gguf --port 8080 -c 12288 --jinja",
-                "     下载：https://github.com/ggml-org/llama.cpp/releases",
-                "   · LM Studio：图形界面里加载模型后开「Local Server」，默认 http://127.0.0.1:1234/v1",
-                "   · ollama：ollama run qwen3:4b（默认 http://127.0.0.1:11434/v1）",
-                "② 在 config/mymeido/chat/api.txt 填：",
+                MeidoLocale.pick(
+                        "本 mod 不绑定模型。要让她会聊天，你自己起一个 OpenAI 兼容服务，然后把地址填给她：",
+                        "This mod is not tied to any model. To let her chat, run an OpenAI-compatible "
+                                + "service yourself and give her the address:"),
+                MeidoLocale.pick(
+                        "──── 路线 A：本地服务（免费、断网可用）────",
+                        "──── Path A: Local service (free, works offline) ────"),
+                MeidoLocale.pick(
+                        "① 起服务，三选一：",
+                        "① Start a service, pick one of three:"),
+                MeidoLocale.pick(
+                        "   · llama.cpp：llama-server -m 你的模型.gguf --port 8080 -c 12288 --jinja",
+                        "   · llama.cpp: llama-server -m your-model.gguf --port 8080 -c 12288 --jinja"),
+                MeidoLocale.pick(
+                        "     下载：https://github.com/ggml-org/llama.cpp/releases",
+                        "     Download: https://github.com/ggml-org/llama.cpp/releases"),
+                MeidoLocale.pick(
+                        "   · LM Studio：图形界面里加载模型后开「Local Server」，默认 http://127.0.0.1:1234/v1",
+                        "   · LM Studio: load a model in the GUI then enable 'Local Server', "
+                                + "default http://127.0.0.1:1234/v1"),
+                MeidoLocale.pick(
+                        "   · ollama：ollama run qwen3:4b（默认 http://127.0.0.1:11434/v1）",
+                        "   · ollama: ollama run qwen3:4b (default http://127.0.0.1:11434/v1)"),
+                MeidoLocale.pick(
+                        "② 在 config/mymeido/chat/api.txt 填：",
+                        "② In config/mymeido/chat/api.txt fill:"),
                 "   api_base_url=http://127.0.0.1:8080/v1",
-                "   api_model=你的模型名（llama.cpp 随便填，LM Studio/ollama 要填对）",
-                "   （本地服务 api_key 留空即可）",
-                "③ 游戏里敲 /mymeido aireload",
-                "──── 路线 B：云 API（省事、要密钥、要联网）────",
-                "① api_base_url 填服务商地址（如 https://api.deepseek.com/v1）",
-                "② api_key 填你的密钥；api_model 填模型名（如 deepseek-chat）",
-                "③ /mymeido aireload",
-                "──── 路线 C：订阅制 / 特殊端点 ────",
-                "只要对方是 OpenAI 兼容（POST 地址 + /chat/completions + 能收 messages），就能用。",
-                "遇到下面两种「不兼容」，配置里有两个开关：",
-                "① 报「非流式不支持」/ 400 带 stream 字样 → api_stream=true",
-                "② 要求伪装请求头、或鉴权头不叫 Authorization",
-                "   → api_extra_headers=名:值; 名:值（例：User-Agent:CLI/1.0 C/1.0; X-Product:SaaS）",
-                "③ 改完记得 /mymeido aireload，再 /mymeido aistatus 确认「流式」和「自定义头」对上了",
-                "──── 基础模式（什么都不填）────",
-                "她仍然会说话：右键点她，用 mod 自带的台词回应你；但不会回复你打的话。",
-                "──── 她会主动搭话吗 ────",
-                "只有 API 模式才会：造她的那个玩家在她附近待够 5 分钟，她白天会走过来搭一句话。",
-                "台词让 API 现想（带关系氛围、避开最近说过的），每小时最多 2 次。",
-                "想调时间/次数/关掉 → chat/api.txt 的 proactive_* 三行；现场看状态 → /mymeido proactive。");
+                MeidoLocale.pick(
+                        "   api_model=你的模型名（llama.cpp 随便填，LM Studio/ollama 要填对）",
+                        "   api_model=your-model-name (any value for llama.cpp; must be exact for LM Studio/ollama)"),
+                MeidoLocale.pick(
+                        "   （本地服务 api_key 留空即可）",
+                        "   (for local service, leave api_key empty)"),
+                MeidoLocale.pick(
+                        "③ 游戏里敲 /mymeido aireload",
+                        "③ In-game run /mymeido aireload"),
+                MeidoLocale.pick(
+                        "──── 路线 B：云 API（省事、要密钥、要联网）────",
+                        "──── Path B: Cloud API (convenient, needs key & network) ────"),
+                MeidoLocale.pick(
+                        "① api_base_url 填服务商地址（如 https://api.deepseek.com/v1）",
+                        "① api_base_url = your provider's address (e.g. https://api.deepseek.com/v1)"),
+                MeidoLocale.pick(
+                        "② api_key 填你的密钥；api_model 填模型名（如 deepseek-chat）",
+                        "② api_key = your key; api_model = the model name (e.g. deepseek-chat)"),
+                MeidoLocale.pick(
+                        "③ /mymeido aireload",
+                        "③ /mymeido aireload"),
+                MeidoLocale.pick(
+                        "──── 路线 C：订阅制 / 特殊端点 ────",
+                        "──── Path C: Subscription / special endpoints ────"),
+                MeidoLocale.pick(
+                        "只要对方是 OpenAI 兼容（POST 地址 + /chat/completions + 能收 messages），就能用。",
+                        "As long as it is OpenAI-compatible (POST URL + /chat/completions + accepts messages), it works."),
+                MeidoLocale.pick(
+                        "遇到下面两种「不兼容」，配置里有两个开关：",
+                        "If you hit either of these 'incompatibilities', there are two switches in the config:"),
+                MeidoLocale.pick(
+                        "① 报「非流式不支持」/ 400 带 stream 字样 → api_stream=true",
+                        "① Error 'non-streaming not supported' / 400 mentioning stream -> api_stream=true"),
+                MeidoLocale.pick(
+                        "② 要求伪装请求头、或鉴权头不叫 Authorization",
+                        "② Requires spoofed request headers, or the auth header isn't Authorization"),
+                MeidoLocale.pick(
+                        "   → api_extra_headers=名:值; 名:值（例：User-Agent:CLI/1.0 C/1.0; X-Product:SaaS）",
+                        "   -> api_extra_headers=name:value; name:value (e.g. User-Agent:CLI/1.0 C/1.0; X-Product:SaaS)"),
+                MeidoLocale.pick(
+                        "③ 改完记得 /mymeido aireload，再 /mymeido aistatus 确认「流式」和「自定义头」对上了",
+                        "③ After editing, run /mymeido aireload, then /mymeido aistatus to confirm "
+                                + "'streaming' and 'custom headers' are applied"),
+                MeidoLocale.pick(
+                        "──── 基础模式（什么都不填）────",
+                        "──── Basic mode (fill nothing) ────"),
+                MeidoLocale.pick(
+                        "她仍然会说话：右键点她，用 mod 自带的台词回应你；但不会回复你打的话。",
+                        "She still talks: right-click her and she replies with the mod's built-in lines; "
+                                + "but she won't answer what you type."),
+                MeidoLocale.pick(
+                        "──── 她会主动搭话吗 ────",
+                        "──── Will she talk to you on her own? ────"),
+                MeidoLocale.pick(
+                        "只有 API 模式才会：造她的那个玩家在她附近待够 5 分钟，她白天会走过来搭一句话。",
+                        "Only in API mode: the player who created her stays near her for 5 minutes, "
+                                + "and she'll walk over and say something during daytime."),
+                MeidoLocale.pick(
+                        "台词让 API 现想（带关系氛围、避开最近说过的），每小时最多 2 次。",
+                        "Lines are generated live by the API (with relationship mood, avoiding recent repeats), "
+                                + "at most 2 times per hour."),
+                MeidoLocale.pick(
+                        "想调时间/次数/关掉 → chat/api.txt 的 proactive_* 三行；现场看状态 → /mymeido proactive。",
+                        "To adjust timing/count/disable -> the proactive_* lines in chat/api.txt; "
+                                + "to check live status -> /mymeido proactive."));
     }
 
     /**
-     * 切纯白模式并<b>写回文件</b>。写回是按行替换/追加，中文注释原样保留。
+     * Toggles plain-white mode and <b>writes it back</b>. The write is a line replace/append,
+     * Chinese comments preserved verbatim.
      *
-     * @return 切换后的状态（true = 现在是纯白）
+     * @return the toggled state (true = now plain white)
      */
     public static synchronized boolean togglePlainChat() {
         plainChat = !plainChat;
         try {
             List<String> lines = Files.exists(CONFIG_FILE)
                     ? Files.readAllLines(CONFIG_FILE, StandardCharsets.UTF_8)
-                    : List.of(TEMPLATE.split("\n", -1));
+                    : List.of(template().split("\n", -1));
             StringBuilder out = new StringBuilder();
             boolean replaced = false;
             for (String line : lines) {
@@ -380,7 +549,8 @@ public final class MeidoAiConfig {
             Files.createDirectories(CONFIG_FILE.getParent());
             Files.writeString(CONFIG_FILE, out.toString(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            MyMeido.LOGGER.error("[mymeido] 写回 chat_plain 失败（本次会话内仍然生效）：{}", e.toString());
+            MyMeido.LOGGER.error("[mymeido] failed to write back chat_plain (still in effect this session): {}",
+                    e.toString());
         }
         return plainChat;
     }

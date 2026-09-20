@@ -1,5 +1,7 @@
 package com.mymeido.entity;
 
+import com.mymeido.MeidoLocale;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,26 +23,28 @@ import net.minecraft.particle.ParticleTypes;
  */
 public enum MeidoEmotion {
 
-    NEUTRAL("neutral", "平静", 0, null, 0),
-    HAPPY("happy", "开心", 50, ParticleTypes.HAPPY_VILLAGER, 2),
-    LOVE("love", "心动", 60, ParticleTypes.HEART, 3),
-    SHY("shy", "害羞", 55, ParticleTypes.HAPPY_VILLAGER, 1),
-    ANGRY("angry", "生气", 45, ParticleTypes.ANGRY_VILLAGER, 1),
-    SAD("sad", "难过", 70, ParticleTypes.SPLASH, 1),
-    SURPRISED("surprised", "惊讶", 30, ParticleTypes.NOTE, 2),
-    THINKING("thinking", "思考", 70, ParticleTypes.CRIT, 1),
-    TIRED("tired", "疲倦", 80, ParticleTypes.CLOUD, 1),
-    CONFUSED("confused", "困惑", 50, ParticleTypes.NOTE, 1);
+    NEUTRAL("neutral", "平静", "Calm", 0, null, 0),
+    HAPPY("happy", "开心", "Happy", 50, ParticleTypes.HAPPY_VILLAGER, 2),
+    LOVE("love", "心动", "Smitten", 60, ParticleTypes.HEART, 3),
+    SHY("shy", "害羞", "Shy", 55, ParticleTypes.HAPPY_VILLAGER, 1),
+    ANGRY("angry", "生气", "Angry", 45, ParticleTypes.ANGRY_VILLAGER, 1),
+    SAD("sad", "难过", "Sad", 70, ParticleTypes.SPLASH, 1),
+    SURPRISED("surprised", "惊讶", "Surprised", 30, ParticleTypes.NOTE, 2),
+    THINKING("thinking", "思考", "Thinking", 70, ParticleTypes.CRIT, 1),
+    TIRED("tired", "疲倦", "Tired", 80, ParticleTypes.CLOUD, 1),
+    CONFUSED("confused", "困惑", "Confused", 50, ParticleTypes.NOTE, 1);
 
     private final String id;
-    private final String displayName;
+    private final String zhName;
+    private final String enName;
     private final int durationTicks;
     private final ParticleEffect particle;
     private final int particleCount;
 
-    MeidoEmotion(String id, String displayName, int durationTicks, ParticleEffect particle, int particleCount) {
+    MeidoEmotion(String id, String zhName, String enName, int durationTicks, ParticleEffect particle, int particleCount) {
         this.id = id;
-        this.displayName = displayName;
+        this.zhName = zhName;
+        this.enName = enName;
         this.durationTicks = durationTicks;
         this.particle = particle;
         this.particleCount = particleCount;
@@ -51,9 +55,9 @@ public enum MeidoEmotion {
         return this.id;
     }
 
-    /** 给玩家看的中文名。 */
+    /** 给玩家看的名字（随语言切换）。 */
     public String getDisplayName() {
-        return this.displayName;
+        return MeidoLocale.pick(this.zhName, this.enName);
     }
 
     /** 这次情绪持续多少 tick（20 tick = 1 秒）。NEUTRAL 为 0。 */
