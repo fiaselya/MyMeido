@@ -4,8 +4,35 @@ pluginManagement {
             name = 'Fabric'
             url = 'https://maven.fabricmc.net/'
         }
+        // Stonecutter 插件（dev.kikugie.stonecutter）的发布仓库
+        maven {
+            name = 'KikuGie'
+            url = 'https://maven.kikugie.dev/releases'
+        }
         mavenCentral()
         gradlePluginPortal()
+    }
+}
+
+plugins {
+    id 'dev.kikugie.stonecutter' version '0.9.8'
+}
+
+stonecutter {
+    // 这个工程用 Groovy DSL（build.gradle / stonecutter.gradle），
+    // Stonecutter 默认按 Kotlin 控制器处理，必须显式关掉。
+    kotlinController = false
+    centralScript = "build.gradle"
+
+    // ★ 当前只注册 1.21.1 一个节点 —— build.gradle 会按注册的节点逐个求值，
+    //   把没适配的版本注册进来 = 构建立刻炸。1.21.11（Fabric）与 neoforge-1.21.1
+    //   的骨架已放在 versions/ 下（只有 gradle.properties + README 占位），
+    //   等依赖/mappings 适配做完再到这里注册：
+    //     versions '1.21.1', '1.21.11'
+    //   NeoForge 属于多加载器（同一 MC 版本多节点），注册方式见
+    //   versions/neoforge-1.21.1/README.md。
+    create(getRootProject()) {
+        versions '1.21.1'
     }
 }
 

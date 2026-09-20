@@ -1,0 +1,9 @@
+// Stonecutter 的「控制器」脚本：整个构建只在配置阶段执行一次（根项目），
+// 与 build.gradle（按节点反复求值的「共享模板」）分工不同。
+plugins {
+    id 'dev.kikugie.stonecutter'
+}
+
+// 活动版本：决定根目录 src/ 的条件注释按哪个版本展开、
+// 根 src/ 链到哪个节点的 classpath。切版本就改这一行。
+stonecutter.active '1.21.1'

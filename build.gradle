@@ -14,6 +14,11 @@ base {
 // 为什么需要：NPC 是「真实实体」，必须在服务端（单人游戏的内置服务端）也注册，
 // 所以 fabric.mod.json 的 environment 用 "*"；而渲染器、皮肤、粒子这类
 // 只存在于客户端的类，放在 src/client 里，服务端不会去加载它们。
+// ★ Stonecutter 之后，这份脚本是在 versions/<版本>/ 子工程里求值的，
+//   Loom 默认的运行目录会落到 versions/<版本>/run —— 冒烟脚本（tools/smoke3*.py）
+//   和开发实例全都钉死了工程根的 run/，必须显式指回去。
+//   ★ 只能用相对路径：给绝对路径 Loom 会把开头的 "/" 丢掉再拼
+//     （曾生成过 versions/1.21.1/Users/... 这种怪目录）。
 loom {
     splitEnvironmentSourceSets()
 
@@ -21,6 +26,15 @@ loom {
         "mymeido" {
             sourceSet sourceSets.main
             sourceSet sourceSets.client
+        }
+    }
+
+    runs {
+        server {
+            runDir "../../run"
+        }
+        client {
+            runDir "../../run"
         }
     }
 }
