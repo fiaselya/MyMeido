@@ -60,9 +60,19 @@ processResources {
     //   写死 1.21.1 的话 1.21.11 的 jar 会被 FabricLoader 判不兼容直接拒载。
     //   build.gradle 是按节点求值的，stonecutter.current.version 即本节点 MC 版本。
     inputs.property "mcversion", stonecutter.current.version
+    // ★ 配方 ingredient 格式分版本：1.21.2 起从 {"item": …} 对象改成纯字符串
+    //   （1.21.1 不认字符串、1.21.11 不认对象，双向不兼容；stonecutter 又不预处理
+    //   .json 资源，所以走 expand 模板 —— 与 ${mcversion} 同机制）。
+    def v = stonecutter.current.version.split('\\.').collect { it.toInteger() }
+    def newStyle = (v[0] > 1) || (v[1] > 21) || (v[1] == 21 && v[2] >= 2)
+    inputs.property "newIngredient", newStyle
     filesMatching("fabric.mod.json") {
         expand "version": inputs.properties.version,
                 "mcversion": inputs.properties.mcversion
+    }
+    filesMatching("data/mymeido/recipe/meido_contract.json") {
+        expand "ing_nether_star": newStyle ? '"minecraft:nether_star"' : '{"item": "minecraft:nether_star"}',
+                "ing_paper": newStyle ? '"minecraft:paper"' : '{"item": "minecraft:paper"}'
     }
 }
 

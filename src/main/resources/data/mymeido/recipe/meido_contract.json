@@ -2,12 +2,8 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "key": {
-    "N": {
-      "item": "minecraft:nether_star"
-    },
-    "P": {
-      "item": "minecraft:paper"
-    }
+    "N": ${ing_nether_star},
+    "P": ${ing_paper}
   },
   "pattern": [
     "PPP",
