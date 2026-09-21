@@ -1,5 +1,7 @@
 package com.mymeido.chat;
 
+import com.mymeido.MeidoCompat;
+
 import com.mymeido.MeidoLocale;
 import com.mymeido.ai.MeidoAiConfig;
 import com.mymeido.entity.MeidoColor;
@@ -71,7 +73,7 @@ public final class MeidoChat {
      * @return 成功广播返回 true；在没有服务端的环境（纯客户端）返回 false。
      */
     public static boolean say(MeidoEntity meido, String text) {
-        World world = meido.getWorld();
+        World world = MeidoCompat.worldOf(meido);
         MinecraftServer server = world.getServer();
         if (server == null) {
             return false;

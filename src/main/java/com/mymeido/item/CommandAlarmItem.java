@@ -1,5 +1,7 @@
 package com.mymeido.item;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -21,7 +23,12 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
+//? if <1.21.11 {
+/*import net.minecraft.util.TypedActionResult;
+*///?}
+//? if >=1.21.11 {
+import net.minecraft.component.type.TooltipDisplayComponent;
+//?}
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
@@ -146,7 +153,21 @@ public class CommandAlarmItem extends Item {
     // 右键空气 = 挑单子
     // ------------------------------------------------------------------
 
+    // 1.21.11：TypedActionResult 整个没了，Item.use 直接返回 ActionResult（javap 实锤）。
+    //? if >=1.21.11 {
     @Override
+    public ActionResult use(World world, PlayerEntity player, Hand hand) {
+        if (world.isClient()) {
+            // 界面是纯客户端的东西：只在这里开。
+            picker.run();
+            return ActionResult.SUCCESS;
+        }
+        // 服务端什么都不做 —— 真正改模式的是玩家在界面里选完之后发来的那个包。
+        // 返回 SUCCESS 只是告诉原版「这一下用掉了」，免得又去触发别的默认行为。
+        return ActionResult.SUCCESS;
+    }
+    //?} else {
+    /*@Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity player, Hand hand) {
         ItemStack stack = player.getStackInHand(hand);
         if (world.isClient()) {
@@ -158,6 +179,7 @@ public class CommandAlarmItem extends Item {
         // 返回 SUCCESS 只是告诉原版「这一下用掉了」，免得又去触发别的默认行为。
         return TypedActionResult.success(stack, false);
     }
+    *///?}
 
     // ------------------------------------------------------------------
     // 右键方块 = 下单
@@ -226,9 +248,27 @@ public class CommandAlarmItem extends Item {
     // 提示文本
     // ------------------------------------------------------------------
 
+    // 1.21.11：appendTooltip 插了个 TooltipDisplayComponent 参数、List 换 Consumer（javap 实锤）。
+    //? if >=1.21.11 {
     @Override
-    public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType type) {
+    public void appendTooltip(ItemStack stack, Item.TooltipContext context,
+            net.minecraft.component.type.TooltipDisplayComponent display,
+            java.util.function.Consumer<Text> tooltip, TooltipType type) {
+        super.appendTooltip(stack, context, display, tooltip, type);
+        List<Text> lines = new java.util.ArrayList<>();
+        this.addTooltipLines(stack, lines);
+        lines.forEach(tooltip::accept);
+    }
+    //?} else {
+    /*@Override
+    public void appendTooltip(ItemStack stack, Item.TooltipContext context, List<Text> tooltip, TooltipType type) {
         super.appendTooltip(stack, context, tooltip, type);
+        this.addTooltipLines(stack, tooltip);
+    }
+    *///?}
+
+    /** 提示正文（两版签名汇到这里，方法体零分叉）。 */
+    private void addTooltipLines(ItemStack stack, List<Text> tooltip) {
 
         // ---- 第零段：这块闹钟是谁的 ----
         // 摆在最前面，因为「我手上这块是给谁的」是拿错闹钟时最先要确认的事。
@@ -399,7 +439,7 @@ public class CommandAlarmItem extends Item {
         Box box = player.getBoundingBox().expand(DISPATCH_RANGE);
         MeidoEntity best = null;
         double bestSquared = Double.MAX_VALUE;
-        for (MeidoEntity meido : player.getWorld().getEntitiesByClass(MeidoEntity.class, box, e -> e.isAlive())) {
+        for (MeidoEntity meido : MeidoCompat.worldOf(player).getEntitiesByClass(MeidoEntity.class, box, e -> e.isAlive())) {
             double d = player.squaredDistanceTo(meido);
             if (d < bestSquared) {
                 bestSquared = d;
@@ -424,7 +464,7 @@ public class CommandAlarmItem extends Item {
             return null;
         }
         Box box = player.getBoundingBox().expand(BOUND_RANGE);
-        for (MeidoEntity meido : player.getWorld().getEntitiesByClass(MeidoEntity.class, box,
+        for (MeidoEntity meido : MeidoCompat.worldOf(player).getEntitiesByClass(MeidoEntity.class, box,
                 e -> e.isAlive() && id.equals(e.getUuid()))) {
             return meido;
         }

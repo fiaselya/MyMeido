@@ -1,5 +1,7 @@
 package com.mymeido.entity.goal;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.EnumSet;
 
 import com.mymeido.entity.MeidoEntity;
@@ -53,12 +55,12 @@ public class MeidoFleeGoal extends Goal {
 
     @Override
     public void tick() {
-        Vec3d away = this.meido.getPos().subtract(this.meido.fleeFromPos());
+        Vec3d away = MeidoCompat.posOf(this.meido).subtract(this.meido.fleeFromPos());
         away = new Vec3d(away.x, 0, away.z);
         if (away.lengthSquared() < 1.0E-4) {
             away = new Vec3d(1, 0, 0);   // 贴脸打的：随便选个方向跑。
         }
-        Vec3d dest = this.meido.getPos().add(away.normalize().multiply(FLEE_DIST));
+        Vec3d dest = MeidoCompat.posOf(this.meido).add(away.normalize().multiply(FLEE_DIST));
         if (this.repathTimer-- <= 0) {
             this.repathTimer = 10;
             this.meido.getNavigation().startMovingTo(dest.x, this.meido.getY(), dest.z, FLEE_SPEED);

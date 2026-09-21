@@ -1,5 +1,7 @@
 package com.mymeido.ai;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
@@ -200,7 +202,7 @@ public final class MeidoAi {
                 messages.add(new MeidoLlm.Msg(entry[0], entry[1]));
             }
         }
-        MeidoLlm.chat(meido.getServer(), MeidoAiConfig.llmOptions(), messages,
+        MeidoLlm.chat(MeidoCompat.serverOf(meido), MeidoAiConfig.llmOptions(), messages,
                 reply -> finishProactive(meido, player, reply, attempt),
                 error -> {
                     apiDownAt = System.currentTimeMillis();
@@ -307,7 +309,7 @@ public final class MeidoAi {
             }
         }
 
-        MeidoLlm.chat(meido.getServer(), MeidoAiConfig.llmOptions(), messages,
+        MeidoLlm.chat(MeidoCompat.serverOf(meido), MeidoAiConfig.llmOptions(), messages,
                 reply -> {
                     // ★ 复读拦截：小模型偶尔把主人的原话原样吐回来 —— 换兜底短句顶上。
                     String lastUser = lastUserLine(meido);
@@ -397,7 +399,7 @@ public final class MeidoAi {
         messages.add(new MeidoLlm.Msg("user", "要压缩的对话：\n"
                 + String.join("\n", snapshot.stream().map(m -> m.role() + "：" + m.content()).toList())));
 
-        MeidoLlm.chat(meido.getServer(), MeidoAiConfig.llmOptions(), messages,
+        MeidoLlm.chat(MeidoCompat.serverOf(meido), MeidoAiConfig.llmOptions(), messages,
                 summary -> {
                     meido.setAiSummary(summary);
                     MyMeido.LOGGER.info("[mymeido][ai] Memory compressed ({}): {}", meido.characterName(), summary);
@@ -778,7 +780,7 @@ public final class MeidoAi {
         }
         messages.add(new MeidoLlm.Msg("user", "最近的对话记录：\n" + transcript));
 
-        MeidoLlm.chat(meido.getServer(), MeidoAiConfig.llmOptions(), messages,
+        MeidoLlm.chat(MeidoCompat.serverOf(meido), MeidoAiConfig.llmOptions(), messages,
                 text -> {
                     java.nio.file.Path file = MeidoPersona.writeAuto(meido.getSkin().getId(), text);
                     if (file != null) {

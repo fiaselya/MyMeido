@@ -8,6 +8,12 @@ import com.mymeido.mode.MeidoModeRegistry;
 import com.mymeido.mode.MeidoModeType;
 
 import net.minecraft.nbt.NbtCompound;
+//? if >=1.21.11 {
+import net.minecraft.storage.ReadView;
+import net.minecraft.storage.WriteView;
+import net.minecraft.util.Uuids;
+//?}
+
 import net.minecraft.util.math.BlockPos;
 
 /**
@@ -133,7 +139,28 @@ public final class MeidoMission {
     // 存档
     // ------------------------------------------------------------------
 
-    public void writeNbt(NbtCompound nbt) {
+    // 1.21.11 实体存档走 WriteView/ReadView（javap 实锤），与 1.21.1 的 NbtCompound
+    // 版本并存 —— 键名两套保持一致，per-version 各读各的。
+    //? if >=1.21.11 {
+    public void writeView(WriteView view) {
+        view.putString(KEY_MODE, this.modeId);
+        // putNullable：null 时整键不写，与旧版「null 就不放」语义一致。
+        view.putNullable(KEY_TARGET, BlockPos.CODEC, this.target);
+        view.putNullable(KEY_HOME, BlockPos.CODEC, this.home);
+        // ★ INT_STREAM_CODEC（int 数组版）而不是 Uuids.CODEC（字符串版）：
+        //   1.21.1 的 putUuid 写的是 [I;a,b,c,d]，必须同型才能互相读档。
+        view.putNullable(KEY_DISPATCHER, Uuids.INT_STREAM_CODEC, this.dispatchedBy);
+    }
+
+    public void readView(ReadView view) {
+        view.getOptionalString(KEY_MODE).ifPresent(id -> this.modeId = id);
+        // 坐标沿用 asLong 思路换成 codec：一个键装下 xyz，不会「存了 x 忘了 z」。
+        this.target = view.read(KEY_TARGET, BlockPos.CODEC).orElse(null);
+        this.home = view.read(KEY_HOME, BlockPos.CODEC).orElse(null);
+        this.dispatchedBy = view.read(KEY_DISPATCHER, Uuids.CODEC).orElse(null);
+    }
+    //?} else {
+    /*public void writeNbt(NbtCompound nbt) {
         nbt.putString(KEY_MODE, this.modeId);
         if (this.target != null) {
             nbt.putLong(KEY_TARGET, this.target.asLong());
@@ -157,6 +184,7 @@ public final class MeidoMission {
         this.home = nbt.contains(KEY_HOME) ? BlockPos.fromLong(nbt.getLong(KEY_HOME)) : null;
         this.dispatchedBy = nbt.contains(KEY_DISPATCHER) ? nbt.getUuid(KEY_DISPATCHER) : null;
     }
+    *///?}
 
     /** 「x y z」或者「—」，给指令输出用。 */
     public static String format(BlockPos pos) {

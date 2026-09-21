@@ -8,6 +8,8 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
 
 /**
  * 实体注册表。
@@ -34,7 +36,12 @@ public final class MyMeidoEntities {
                     .eyeHeight(1.62f)
                     // 追踪范围给到跟玩家同档，免得远一点就开始抽搐
                     .maxTrackingRange(10)
-                    .build("meido")
+                    // 1.21.11：build 要 RegistryKey，不再收 String（javap 实锤）。
+                    //? if >=1.21.11 {
+                    .build(RegistryKey.of(RegistryKeys.ENTITY_TYPE, MeidoConst.id("meido")))
+                    //?} else {
+                    /*.build("meido")
+                    *///?}
     );
 
     private MyMeidoEntities() {

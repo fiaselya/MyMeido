@@ -1,5 +1,7 @@
 package com.mymeido.entity.goal;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.EnumSet;
 import java.util.List;
 
@@ -119,7 +121,7 @@ public class MeidoGuardGoal extends Goal {
         // 锚点：守卫锚在岗位方块，游走锚在开打时的位置。
         this.anchor = this.meido.getMission().type() == MeidoModeType.GUARD
                 ? this.postCenter()
-                : this.meido.getPos();
+                : MeidoCompat.posOf(this.meido);
         this.meido.setTarget(this.target);
         // ★ 「只在攻击时把武器装备上」的那一下：从背包摸剑上手。
         this.meido.holdWeapon();
@@ -208,7 +210,8 @@ public class MeidoGuardGoal extends Goal {
         this.cooldown = ATTACK_INTERVAL;
         this.phase = Phase.RETREAT;
         this.meido.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-        this.meido.tryAttack(this.target);
+        // 1.21.5 起 tryAttack 要 ServerWorld —— 差异收口在 MeidoCompat。
+        MeidoCompat.tryAttack(this.meido, this.target);
     }
 
     /**
@@ -216,14 +219,14 @@ public class MeidoGuardGoal extends Goal {
      * 方向退化（目标和自己重合）时直接退向锚点。
      */
     private Vec3d retreatPoint() {
-        Vec3d away = this.meido.getPos().subtract(this.target.getPos());
-        Vec3d towardAnchor = this.anchor.subtract(this.meido.getPos());
+        Vec3d away = MeidoCompat.posOf(this.meido).subtract(MeidoCompat.posOf(this.target));
+        Vec3d towardAnchor = this.anchor.subtract(MeidoCompat.posOf(this.meido));
         Vec3d dir = away.add(towardAnchor.normalize().multiply(0.5));
         if (dir.lengthSquared() < 1.0E-4) {
             dir = towardAnchor;
         }
         dir = dir.normalize().multiply(3.5);
-        Vec3d point = this.meido.getPos().add(dir);
+        Vec3d point = MeidoCompat.posOf(this.meido).add(dir);
         return new Vec3d(
                 MathHelper.clamp(point.x, this.anchor.x - LEASH_RADIUS, this.anchor.x + LEASH_RADIUS),
                 point.y,
@@ -248,7 +251,7 @@ public class MeidoGuardGoal extends Goal {
                 center.x - SEARCH_RADIUS, center.y - SEARCH_RADIUS, center.z - SEARCH_RADIUS,
                 center.x + SEARCH_RADIUS, center.y + SEARCH_RADIUS, center.z + SEARCH_RADIUS);
         boolean attackPlayers = com.mymeido.mode.MeidoModeRegistry.guardAttackPlayers();
-        List<LivingEntity> candidates = this.meido.getWorld().getEntitiesByClass(
+        List<LivingEntity> candidates = MeidoCompat.worldOf(this.meido).getEntitiesByClass(
                 LivingEntity.class, box, mob -> mob.isAlive()
                         && (mob instanceof Monster
                                 || (attackPlayers && mob instanceof net.minecraft.server.network.ServerPlayerEntity))
@@ -272,14 +275,14 @@ public class MeidoGuardGoal extends Goal {
         if (mission.target() != null) {
             return Vec3d.ofCenter(mission.target());
         }
-        return this.meido.getPos();
+        return MeidoCompat.posOf(this.meido);
     }
 
     /** canStart 时锚点还没定，用岗位（或自己脚下）先当找怪中心。 */
     private Vec3d anchorOrPos() {
         return this.meido.getMission().type() == MeidoModeType.GUARD
                 ? this.postCenter()
-                : this.meido.getPos();
+                : MeidoCompat.posOf(this.meido);
     }
 
     private boolean isCombatActive() {

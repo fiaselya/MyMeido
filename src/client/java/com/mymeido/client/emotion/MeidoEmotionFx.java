@@ -81,7 +81,13 @@ public final class MeidoEmotionFx {
             double dx = (random.nextDouble() - 0.5) * 0.7;
             double dy = (random.nextDouble() - 0.5) * 0.35;
             double dz = (random.nextDouble() - 0.5) * 0.7;
+            // 1.21.11 把这个方法改名成 addParticleClient（原 addParticle 挪去了有
+            // 服务端语义的 World 上）—— 参数表完全一样，纯改名。
+            //? if >=1.21.11 {
+            client.world.addParticleClient(
+            //?} else {
             client.world.addParticle(
+            //?}
                     emotion.particle(),
                     origin.x + dx, origin.y + dy, origin.z + dz,
                     dx * 0.12, 0.015, dz * 0.12);

@@ -1,5 +1,7 @@
 package com.mymeido.entity.goal;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.EnumSet;
 
 import com.mymeido.entity.MeidoEntity;
@@ -109,12 +111,12 @@ public class MeidoGoHomeGoal extends Goal {
 
     /** 原版上床时间窗：12542 ~ 23459（跟玩家「能睡觉」的判定一致）。 */
     private boolean isBedTime() {
-        long timeOfDay = this.meido.getWorld().getTimeOfDay() % 24000L;
+        long timeOfDay = MeidoCompat.worldOf(this.meido).getTimeOfDay() % 24000L;
         return timeOfDay >= SLEEP_FROM && timeOfDay <= SLEEP_TO;
     }
 
     /** 家还在不在：床被挖了就别在空气旁边站一晚上。 */
     private boolean isHomeABed(BlockPos home) {
-        return this.meido.getWorld().getBlockState(home).getBlock() instanceof BedBlock;
+        return MeidoCompat.worldOf(this.meido).getBlockState(home).getBlock() instanceof BedBlock;
     }
 }

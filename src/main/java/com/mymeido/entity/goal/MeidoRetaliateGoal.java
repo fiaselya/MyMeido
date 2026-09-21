@@ -1,5 +1,6 @@
 package com.mymeido.entity.goal;
 
+import com.mymeido.MeidoCompat;
 import java.util.EnumSet;
 
 import com.mymeido.entity.MeidoEntity;
@@ -82,6 +83,7 @@ public class MeidoRetaliateGoal extends Goal {
         }
         this.attackCooldown = ATTACK_INTERVAL;
         this.meido.swingHand(Hand.MAIN_HAND);
-        this.meido.tryAttack(target);
+        // 1.21.5 起 tryAttack 要 ServerWorld —— 差异收口在 MeidoCompat。
+        MeidoCompat.tryAttack(this.meido, target);
     }
 }

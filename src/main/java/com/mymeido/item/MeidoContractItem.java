@@ -27,7 +27,12 @@ import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
-import net.minecraft.util.TypedActionResult;
+//? if <1.21.11 {
+/*import net.minecraft.util.TypedActionResult;
+*///?}
+//? if >=1.21.11 {
+import net.minecraft.component.type.TooltipDisplayComponent;
+//?}
 import net.minecraft.world.World;
 
 /**
@@ -87,7 +92,22 @@ public class MeidoContractItem extends Item {
     // 两个入口都开菜单
     // ------------------------------------------------------------------
 
+    // 1.21.11：TypedActionResult 没了，use 直接返回 ActionResult（javap 实锤）。
+    //? if >=1.21.11 {
     @Override
+    public ActionResult use(World world, PlayerEntity player, Hand hand) {
+        if (world.isClient()) {
+            // 真正的逻辑全在服务端（要造实体、要往聊天栏发东西）。
+            // 客户端返回 SUCCESS 就是告诉原版「这一下用掉了」，并顺带甩一下手臂。
+            return ActionResult.SUCCESS;
+        }
+        if (player instanceof ServerPlayerEntity serverPlayer) {
+            openMenu(serverPlayer);
+        }
+        return ActionResult.SUCCESS;
+    }
+    //?} else {
+    /*@Override
     public TypedActionResult<ItemStack> use(World world, PlayerEntity player, Hand hand) {
         ItemStack stack = player.getStackInHand(hand);
         if (world.isClient()) {
@@ -100,6 +120,7 @@ public class MeidoContractItem extends Item {
         }
         return TypedActionResult.success(stack, false);
     }
+    *///?}
 
     @Override
     public ActionResult useOnBlock(ItemUsageContext context) {
@@ -150,10 +171,18 @@ public class MeidoContractItem extends Item {
             MeidoSkin skin = skins.get(i);
             // 点一下就自动把编号填进聊天框（SUGGEST_COMMAND）—— 比让玩家手打一个字符友好，
             // 而且不需要客户端代码：点击事件是原版就渲染并处理的东西。
+            // 1.21.11：ClickEvent 变 sealed，SUGGEST_COMMAND 拆成子类（javap 实锤）。
+            // ★ 分支必须整条语句复制 —— stonecutter 不支持把标记切在未完成表达式的中间。
+            //? if >=1.21.11 {
             MutableText name = Text.literal(label(skin)).setStyle(Style.EMPTY
+                    .withColor(Formatting.AQUA)
+                    .withClickEvent(new ClickEvent.SuggestCommand(String.valueOf(number))));
+            //?} else {
+            /*MutableText name = Text.literal(label(skin)).setStyle(Style.EMPTY
                     .withColor(Formatting.AQUA)
                     .withClickEvent(new ClickEvent(
                             ClickEvent.Action.SUGGEST_COMMAND, String.valueOf(number))));
+            *///?}
             lines.add(Text.literal("  " + number + ") ").formatted(Formatting.GRAY).append(name));
         }
 
@@ -386,9 +415,27 @@ public class MeidoContractItem extends Item {
     // 提示文本
     // ------------------------------------------------------------------
 
+    // 1.21.11：appendTooltip 加了 TooltipDisplayComponent、List 换 Consumer（javap 实锤）。
+    //? if >=1.21.11 {
     @Override
-    public void appendTooltip(ItemStack stack, TooltipContext context, List<Text> tooltip, TooltipType type) {
+    public void appendTooltip(ItemStack stack, Item.TooltipContext context,
+            net.minecraft.component.type.TooltipDisplayComponent display,
+            java.util.function.Consumer<Text> tooltip, TooltipType type) {
+        super.appendTooltip(stack, context, display, tooltip, type);
+        List<Text> lines = new ArrayList<>();
+        this.addTooltipLines(stack, lines);
+        lines.forEach(tooltip::accept);
+    }
+    //?} else {
+    /*@Override
+    public void appendTooltip(ItemStack stack, Item.TooltipContext context, List<Text> tooltip, TooltipType type) {
         super.appendTooltip(stack, context, tooltip, type);
+        this.addTooltipLines(stack, tooltip);
+    }
+    *///?}
+
+    /** 提示正文（两版签名汇到这里）。 */
+    private void addTooltipLines(ItemStack stack, List<Text> tooltip) {
         tooltip.add(Text.literal(MeidoLocale.pick("右键（空气或地面）：在聊天栏列出皮肤库里的角色，编号 1~"
                 + MeidoSkinRegistry.size(),
                 "Right-click (air or ground): lists the characters in the skin library in chat, numbered 1~"

@@ -1,5 +1,7 @@
 package com.mymeido.net;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.List;
 
 import com.mymeido.MeidoLocale;
@@ -46,7 +48,7 @@ public final class MeidoPlayerChat {
     /** 由主入口调用：接管原生聊天。 */
     public static void register() {
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) ->
-                sender.getServer().execute(() ->
+                MeidoCompat.serverOf(sender).execute(() ->
                         route(sender, message.getSignedContent(), false)));
     }
 
@@ -72,7 +74,7 @@ public final class MeidoPlayerChat {
             line = line.substring(0, MAX_LEN);
         }
 
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = MeidoCompat.serverOf(player);
         boolean multiplayer = server != null
                 && (!server.isSingleplayer() || server.getPlayerManager().getCurrentPlayerCount() > 1);
 
@@ -118,7 +120,7 @@ public final class MeidoPlayerChat {
     }
 
     private static void echo(ServerPlayerEntity player, String line) {
-        MinecraftServer server = player.getServer();
+        MinecraftServer server = MeidoCompat.serverOf(player);
         if (server != null) {
             server.getPlayerManager().broadcast(Text.literal(
                     "<" + player.getName().getString() + "> " + line)
@@ -138,7 +140,7 @@ public final class MeidoPlayerChat {
      */
     private static MeidoEntity findByName(ServerPlayerEntity player, String target) {
         String needle = target.toLowerCase();
-        List<MeidoEntity> candidates = player.getWorld().getEntitiesByClass(
+        List<MeidoEntity> candidates = MeidoCompat.worldOf(player).getEntitiesByClass(
                 MeidoEntity.class,
                 player.getBoundingBox().expand(1.0E6D),
                 e -> e.isAlive()

@@ -100,11 +100,27 @@ public final class MeidoItems {
                     .packetCodec(PacketCodecs.STRING)
                     .build());
 
-    /** 指令闹钟本体。堆叠上限 1：它是个「工具」，不设数量没有意义。 */
+    /**
+     * 指令闹钟本体。堆叠上限 1：它是个「工具」，不设数量没有意义。
+     *
+     * <p>★ 1.21.2+ 要求 {@code Item} 构造时就在 Settings 里带上 {@code registryKey}
+     * （物品 id 从「注册时才分配」改成「构造时就必须知道」），否则构造直接
+     * NPE「Item id not set」—— 无头冒烟 2026-09-21 实锤。1.21.1 走老路径。
+     */
+    //? if >=1.21.11 {
+    private static final RegistryKey<Item> COMMAND_ALARM_KEY =
+            RegistryKey.of(RegistryKeys.ITEM, MeidoConst.id("command_alarm"));
+
+    public static final Item COMMAND_ALARM = Registry.register(
+            Registries.ITEM,
+            COMMAND_ALARM_KEY,
+            new CommandAlarmItem(new Item.Settings().maxCount(1).registryKey(COMMAND_ALARM_KEY)));
+    //?} else {
     public static final Item COMMAND_ALARM = Registry.register(
             Registries.ITEM,
             MeidoConst.id("command_alarm"),
             new CommandAlarmItem(new Item.Settings().maxCount(1)));
+    //?}
 
     /**
      * 女仆契约 —— 创造一位女仆的道具（玩家加入世界时自动到手）。
@@ -114,10 +130,20 @@ public final class MeidoItems {
      * 上限 1 让这件事在物品栏里也一眼看得出来（不会出现「我手里 7 张，以为能用 7 次」的暗示）。
      * 想要更多：合成（下界之星 + 8 张纸）或 {@code /mymeido contract}。
      */
+    //? if >=1.21.11 {
+    private static final RegistryKey<Item> MEIDO_CONTRACT_KEY =
+            RegistryKey.of(RegistryKeys.ITEM, MeidoConst.id("meido_contract"));
+
+    public static final Item MEIDO_CONTRACT = Registry.register(
+            Registries.ITEM,
+            MEIDO_CONTRACT_KEY,
+            new MeidoContractItem(new Item.Settings().maxCount(1).registryKey(MEIDO_CONTRACT_KEY)));
+    //?} else {
     public static final Item MEIDO_CONTRACT = Registry.register(
             Registries.ITEM,
             MeidoConst.id("meido_contract"),
             new MeidoContractItem(new Item.Settings().maxCount(1)));
+    //?}
 
     /** 「我的女仆」创造物品栏标签页的注册键。 */
     public static final RegistryKey<ItemGroup> MEIDO_GROUP_KEY = RegistryKey.of(

@@ -1,6 +1,12 @@
 package com.mymeido.entity;
 
+import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.SimpleInventory;
+//? if >=1.21.11 {
+import net.minecraft.storage.ReadView;
+import net.minecraft.storage.WriteView;
+//?}
+import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -104,7 +110,29 @@ public final class MeidoInventory {
         this.backing.clear();
     }
 
-    public void writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup lookup) {
+    // 1.21.11：SimpleInventory 不再有 toNbtList/readNbtList，改走 Inventories.writeData/
+    // readData(WriteView/ReadView)（javap 实锤）。原版读写的是 DefaultedList，
+    // 所以先拷进一个临时 DefaultedList 再交给原版，读回来再写回背包。
+    //? if >=1.21.11 {
+    public void writeView(WriteView view, RegistryWrapper.WrapperLookup lookup) {
+        DefaultedList<ItemStack> list = DefaultedList.ofSize(this.backing.size(), ItemStack.EMPTY);
+        for (int i = 0; i < this.backing.size(); i++) {
+            list.set(i, this.backing.getStack(i));
+        }
+        Inventories.writeData(view.get(NBT_KEY), list);
+    }
+
+    public void readView(ReadView view, RegistryWrapper.WrapperLookup lookup) {
+        view.getOptionalReadView(NBT_KEY).ifPresent(sub -> {
+            DefaultedList<ItemStack> list = DefaultedList.ofSize(this.backing.size(), ItemStack.EMPTY);
+            Inventories.readData(sub, list);
+            for (int i = 0; i < this.backing.size() && i < list.size(); i++) {
+                this.backing.setStack(i, list.get(i));
+            }
+        });
+    }
+    //?} else {
+    /*public void writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup lookup) {
         nbt.put(NBT_KEY, this.backing.toNbtList(lookup));
     }
 
@@ -113,4 +141,5 @@ public final class MeidoInventory {
             this.backing.readNbtList(nbt.getList(NBT_KEY, NbtElement.COMPOUND_TYPE), lookup);
         }
     }
+    *///?}
 }

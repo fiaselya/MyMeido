@@ -10,6 +10,10 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
+//? if >=1.21.11 {
+import net.minecraft.client.input.KeyInput;
+//?}
+
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -66,6 +70,24 @@ public class MeidoChatScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
     }
 
+    //? if >=1.21.11 {
+    /**
+     * 1.21.11：{@code Screen.keyPressed} 的参数从三个 int 换成了 {@link KeyInput} 记录
+     * （{@code key()} / {@code scancode()} / {@code modifiers()}），逻辑不变。
+     */
+    @Override
+    public boolean keyPressed(KeyInput input) {
+        if (input.key() == GLFW.GLFW_KEY_ENTER || input.key() == GLFW.GLFW_KEY_KP_ENTER) {
+            String text = this.input.getText().strip();
+            if (!text.isEmpty()) {
+                ClientPlayNetworking.send(new MeidoChatPayload(text));
+            }
+            this.close();
+            return true;
+        }
+        return super.keyPressed(input);
+    }
+    //?} else {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -78,6 +100,7 @@ public class MeidoChatScreen extends Screen {
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
+    //?}
 
     /** 打字的时候不该暂停游戏 —— 她可能还在你身后干活呢。 */
     @Override

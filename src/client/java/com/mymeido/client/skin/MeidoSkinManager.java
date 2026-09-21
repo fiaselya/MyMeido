@@ -97,7 +97,14 @@ public final class MeidoSkinManager {
             NativeImage image = NativeImage.read(in);
             Identifier id = MeidoConst.id(texturePath(skin));
             MinecraftClient.getInstance().getTextureManager()
-                    .registerTexture(id, new NativeImageBackedTexture(image));
+                    // 1.21.11 的 NativeImageBackedTexture 要求带一个 Supplier<String> 标签
+                    // （调试/性能面板里显示纹理名字用），老版本没有这个构造器。
+                    .registerTexture(id,
+                            //? if >=1.21.11 {
+                            new NativeImageBackedTexture(() -> "mymeido skin " + skin.getId(), image));
+                            //?} else {
+                            new NativeImageBackedTexture(image));
+                            //?}
             MyMeido.LOGGER.info("[mymeido] loaded skin {}: {} -> {}",
                     skin.getId(), file.getFileName(), id);
             return id;

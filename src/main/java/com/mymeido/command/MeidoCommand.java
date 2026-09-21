@@ -1,5 +1,7 @@
 package com.mymeido.command;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -111,7 +113,7 @@ public final class MeidoCommand {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
                 dispatcher.register(CommandManager.literal("mymeido")
                         // 需要 OP（权限等级 2）。这是开发期指令，不该给普通玩家。
-                        .requires(source -> source.hasPermissionLevel(2))
+                        .requires(MeidoCompat::hasOpLevel2)
 
                         .then(CommandManager.literal("summon")
                                 .executes(ctx -> summon(ctx.getSource(), MeidoSkinRegistry.defaultSkin()))
@@ -535,7 +537,7 @@ public final class MeidoCommand {
     /** 玩家为中心 {@value #SEARCH_RADIUS} 格内、距离最近的那个女仆。 */
     private static MeidoEntity nearest(ServerCommandSource source) throws CommandSyntaxException {
         ServerPlayerEntity player = requirePlayer(source);
-        List<MeidoEntity> candidates = player.getWorld().getEntitiesByClass(
+        List<MeidoEntity> candidates = MeidoCompat.worldOf(player).getEntitiesByClass(
                 MeidoEntity.class,
                 player.getBoundingBox().expand(SEARCH_RADIUS),
                 entity -> true);
@@ -600,7 +602,7 @@ public final class MeidoCommand {
             return nearest(source);
         }
         ServerPlayerEntity player = requirePlayer(source);
-        List<MeidoEntity> candidates = player.getWorld().getEntitiesByClass(
+        List<MeidoEntity> candidates = MeidoCompat.worldOf(player).getEntitiesByClass(
                 MeidoEntity.class,
                 player.getBoundingBox().expand(SEARCH_RADIUS),
                 entity -> nameMatches(entity, who));

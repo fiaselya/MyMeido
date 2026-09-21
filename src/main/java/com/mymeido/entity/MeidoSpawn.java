@@ -1,5 +1,7 @@
 package com.mymeido.entity;
 
+import com.mymeido.MeidoCompat;
+
 import com.mymeido.registry.MyMeidoEntities;
 
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -30,7 +32,7 @@ public final class MeidoSpawn {
      * <p><b>只在服务端调</b>：{@code spawnEntity} 在客户端世界里没有意义。
      */
     public static MeidoEntity atPlayer(ServerPlayerEntity player, MeidoSkin skin) {
-        MeidoEntity meido = new MeidoEntity(MyMeidoEntities.MEIDO, player.getServerWorld());
+        MeidoEntity meido = new MeidoEntity(MyMeidoEntities.MEIDO, MeidoCompat.serverWorldOf(player));
         // 站在玩家身上、转身面对玩家（+180°）：她一出场就是「看着你」的，
         // 而不是背对你站着 —— 这一下是 galgame 观感的来源，别省。
         meido.refreshPositionAndAngles(
@@ -42,7 +44,7 @@ public final class MeidoSpawn {
         //   共用的这一份实现里记一次就够了。主动搭话只认这个玩家（设计定稿：
         //   「创建 npc 的玩家」），跟「这次活谁派的」是两回事。
         meido.setOwner(player.getUuid());
-        player.getServerWorld().spawnEntity(meido);
+        MeidoCompat.serverWorldOf(player).spawnEntity(meido);
         return meido;
     }
 }

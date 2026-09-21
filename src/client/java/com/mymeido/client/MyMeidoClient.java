@@ -21,6 +21,10 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 
+//? if >=1.21.11 {
+import net.minecraft.util.Identifier;
+//?}
+
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -34,6 +38,18 @@ import org.lwjgl.glfw.GLFW;
  */
 public class MyMeidoClient implements ClientModInitializer {
 
+    //? if >=1.21.11 {
+    /**
+     * 1.21.11：按键分类从裸字符串换成了 {@link KeyBinding.Category} 记录。
+     * 标签翻译键由 id 推导：{@code key.category.<namespace>.<path>}
+     * （javap -c 核实 {@code getLabel()} 走 {@code Identifier.toTranslationKey("key.category")}），
+     * 所以语言文件里新增了 {@code key.category.mymeido.main} —— 与 1.21.1 用的
+     * {@code key.category.mymeido} 并存，两份都留着互不干扰。
+     */
+    private static final KeyBinding.Category KEY_CATEGORY =
+            KeyBinding.Category.create(Identifier.of("mymeido", "main"));
+    //?}
+
     /**
      * 「和女仆说话」的按键（默认 {@code G}，可在按键设置里改）。
      * A2 定稿：★ 不占用原生的 T 聊天键 —— 我们要的是一个独立输入框，
@@ -42,7 +58,11 @@ public class MyMeidoClient implements ClientModInitializer {
     public static final KeyBinding CHAT_KEY = KeyBindingHelper.registerKeyBinding(
             new KeyBinding("key.mymeido.chat",
                     InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G,
+                    //? if >=1.21.11 {
+                    KEY_CATEGORY));
+                    //?} else {
                     "key.category.mymeido"));
+                    //?}
 
     /**
      * 「对话历史面板」按键（默认 {@code H}）。A2 定稿的另一半：
@@ -51,7 +71,11 @@ public class MyMeidoClient implements ClientModInitializer {
     public static final KeyBinding HISTORY_KEY = KeyBindingHelper.registerKeyBinding(
             new KeyBinding("key.mymeido.history",
                     InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H,
+                    //? if >=1.21.11 {
+                    KEY_CATEGORY));
+                    //?} else {
                     "key.category.mymeido"));
+                    //?}
 
     @Override
     public void onInitializeClient() {

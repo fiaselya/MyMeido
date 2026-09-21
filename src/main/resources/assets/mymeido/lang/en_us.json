@@ -9,6 +9,7 @@
   "commands.mymeido.no_meido": "No maid within 16 blocks",
   "commands.mymeido.no_player": "This command must be run by a player",
   "key.category.mymeido": "MyMeido",
+  "key.category.mymeido.main": "MyMeido",
   "key.mymeido.chat": "Talk to maid",
   "key.mymeido.history": "Dialogue history"
 }

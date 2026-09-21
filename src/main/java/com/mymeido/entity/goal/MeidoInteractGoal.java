@@ -1,5 +1,7 @@
 package com.mymeido.entity.goal;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.EnumSet;
 import java.util.List;
 
@@ -163,7 +165,7 @@ public class MeidoInteractGoal extends Goal {
         if (player == null) {
             return null;
         }
-        List<ItemEntity> items = this.meido.getWorld().getEntitiesByClass(
+        List<ItemEntity> items = MeidoCompat.worldOf(this.meido).getEntitiesByClass(
                 ItemEntity.class,
                 this.meido.getBoundingBox().expand(MeidoEntity.PICKUP_RANGE),
                 item -> !item.getStack().isEmpty()

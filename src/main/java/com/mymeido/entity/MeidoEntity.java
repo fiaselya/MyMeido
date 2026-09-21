@@ -1,5 +1,7 @@
 package com.mymeido.entity;
 
+import com.mymeido.MeidoCompat;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -48,14 +50,22 @@ import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.PathAwareEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Equipment;
+//? if >=1.21.11 {
+import net.minecraft.component.type.EquippableComponent;
+//?} else {
+/*import net.minecraft.item.Equipment;
+*///?}
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.loot.LootTable;
 import net.minecraft.loot.LootTables;
-import net.minecraft.loot.context.LootContextParameterSet;
+//? if >=1.21.11 {
+import net.minecraft.loot.context.LootWorldContext;
+//?} else {
+/*import net.minecraft.loot.context.LootContextParameterSet;
+*///?}
 import net.minecraft.loot.context.LootContextParameters;
 import net.minecraft.loot.context.LootContextTypes;
 import net.minecraft.nbt.NbtCompound;
@@ -81,7 +91,17 @@ import net.minecraft.text.Text;
 import net.minecraft.text.TextColor;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
-import net.minecraft.util.Unit;
+//? if <1.21.11 {
+/*import net.minecraft.util.Unit;
+*///?}
+
+//? if >=1.21.11 {
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.storage.ReadView;
+import net.minecraft.storage.WriteView;
+import net.minecraft.util.Uuids;
+//?}
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
@@ -222,8 +242,16 @@ public class MeidoEntity extends PathAwareEntity {
      * 每 {@code CHUNK_TICK_INTERVAL} tick 对比一次「想要的位置」和「已挂的票」，
      * 差多少补多少；她被杀/被清除时 {@link #onRemoved()} 全部撤掉。
      */
-    private static final ChunkTicketType<Unit> LOAD_TICKET =
+    // 1.21.11：ChunkTicketType 变成 record(expiryTicks, flags)，create() 没了；
+    // 语义照搬旧版 create()：不过期、不参与序列化（票由我们每轮自行挂撤）。
+    //? if >=1.21.11 {
+    private static final ChunkTicketType LOAD_TICKET =
+            new ChunkTicketType(ChunkTicketType.NO_EXPIRATION,
+                    ChunkTicketType.FOR_LOADING | ChunkTicketType.FOR_SIMULATION);
+    //?} else {
+    /*private static final ChunkTicketType<Unit> LOAD_TICKET =
             ChunkTicketType.create("mymeido_maid", (a, b) -> 0);
+    *///?}
 
     /** 常驻加载范围：脚下方块所在区块 + 周围一圈 = 3×3。 */
     private static final int LOAD_RADIUS_CHUNKS = 1;
@@ -450,11 +478,11 @@ public class MeidoEntity extends PathAwareEntity {
     /** 注册时用：血量 / 移速取上面的设计值，跟随距离与抬腿高度按玩家量级给。 */
     public static DefaultAttributeContainer.Builder createMeidoAttributes() {
         return MobEntity.createMobAttributes()
-                .add(EntityAttributes.GENERIC_MAX_HEALTH, DESIGN_MAX_HEALTH)
-                .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, DESIGN_MOVEMENT_SPEED)
-                .add(EntityAttributes.GENERIC_FOLLOW_RANGE, DESIGN_FOLLOW_RANGE)
-                .add(EntityAttributes.GENERIC_STEP_HEIGHT, 0.6)
-                .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, DESIGN_ATTACK_DAMAGE);
+                .add(MeidoCompat.ATTR_MAX_HEALTH, DESIGN_MAX_HEALTH)
+                .add(MeidoCompat.ATTR_MOVEMENT_SPEED, DESIGN_MOVEMENT_SPEED)
+                .add(MeidoCompat.ATTR_FOLLOW_RANGE, DESIGN_FOLLOW_RANGE)
+                .add(MeidoCompat.ATTR_STEP_HEIGHT, 0.6)
+                .add(MeidoCompat.ATTR_ATTACK_DAMAGE, DESIGN_ATTACK_DAMAGE);
     }
 
     /**
@@ -468,9 +496,9 @@ public class MeidoEntity extends PathAwareEntity {
      * 玩家自己用 {@code /attribute} 加的 modifier 不受影响 —— 这里动的只是 base。
      */
     private void applyDesignAttributes() {
-        setAttributeBase(EntityAttributes.GENERIC_MOVEMENT_SPEED, DESIGN_MOVEMENT_SPEED);
-        setAttributeBase(EntityAttributes.GENERIC_MAX_HEALTH, DESIGN_MAX_HEALTH);
-        setAttributeBase(EntityAttributes.GENERIC_ATTACK_DAMAGE, DESIGN_ATTACK_DAMAGE);
+        setAttributeBase(MeidoCompat.ATTR_MOVEMENT_SPEED, DESIGN_MOVEMENT_SPEED);
+        setAttributeBase(MeidoCompat.ATTR_MAX_HEALTH, DESIGN_MAX_HEALTH);
+        setAttributeBase(MeidoCompat.ATTR_ATTACK_DAMAGE, DESIGN_ATTACK_DAMAGE);
     }
 
     private void setAttributeBase(RegistryEntry<EntityAttribute> attribute, double value) {
@@ -528,7 +556,7 @@ public class MeidoEntity extends PathAwareEntity {
     @Override
     public void tick() {
         super.tick();
-        if (this.getWorld().isClient()) {
+        if (MeidoCompat.worldOf(this).isClient()) {
             return;
         }
         // 交互状态倒计时。归零 = 她重新回到自己的日常（游走）。
@@ -568,7 +596,7 @@ public class MeidoEntity extends PathAwareEntity {
      * 有没有找到容器都算「今晚试过了」，不会每 tick 翻箱倒柜。
      */
     private void tickNightStorage() {
-        long timeOfDay = this.getWorld().getTimeOfDay() % 24000L;
+        long timeOfDay = MeidoCompat.worldOf(this).getTimeOfDay() % 24000L;
         if (timeOfDay < 12542L || timeOfDay > 23459L) {
             this.storedTonight = false;   // 天亮重置，明晚再收。
             return;
@@ -583,7 +611,7 @@ public class MeidoEntity extends PathAwareEntity {
         this.storedTonight = true;
         for (BlockPos pos : BlockPos.iterate(
                 home.add(-5, -2, -5), home.add(5, 2, 5))) {
-            if (this.getWorld().getBlockEntity(pos) instanceof Inventory chest) {
+            if (MeidoCompat.worldOf(this).getBlockEntity(pos) instanceof Inventory chest) {
                 int moved = this.transferKeepItems(chest);
                 if (moved > 0) {
                     this.playSound(SoundEvents.BLOCK_CHEST_CLOSE, 0.6f, 1.0f);
@@ -654,8 +682,9 @@ public class MeidoEntity extends PathAwareEntity {
         if (isMeleeWeapon(stack) || stack.isOf(Items.FISHING_ROD)) {
             return true;
         }
-        if (stack.getItem() instanceof Equipment equipment) {
-            switch (equipment.getSlotType()) {
+        EquipmentSlot slot = MeidoCompat.equipmentSlotOf(stack);
+        if (slot != null) {
+            switch (slot) {
                 case FEET, LEGS, CHEST, HEAD -> {
                     return true;
                 }
@@ -683,8 +712,8 @@ public class MeidoEntity extends PathAwareEntity {
             if (healed > 0) {
                 this.heal(healed);
                 this.eatCooldown = EAT_INTERVAL;
-                this.getWorld().playSound(null, this.getBlockPos(),
-                        SoundEvents.ENTITY_GENERIC_EAT, this.getSoundCategory(), 0.8f, 1.0f);
+                MeidoCompat.worldOf(this).playSound(null, this.getBlockPos(),
+                        MeidoCompat.eatSound(), this.getSoundCategory(), 0.8f, 1.0f);
                 return;
             }
         }
@@ -722,9 +751,25 @@ public class MeidoEntity extends PathAwareEntity {
         return 0;
     }
 
+    // 1.21.5 起 LivingEntity.damage 要带 ServerWorld（javap 实锤），覆写签名跟着变。
+    //? if >=1.21.11 {
     @Override
+    public boolean damage(ServerWorld world, net.minecraft.entity.damage.DamageSource source, float amount) {
+        boolean hurt = super.damage(world, source, amount);
+        this.afterDamage(source, hurt);
+        return hurt;
+    }
+    //?} else {
+    /*@Override
     public boolean damage(net.minecraft.entity.damage.DamageSource source, float amount) {
         boolean hurt = super.damage(source, amount);
+        this.afterDamage(source, hurt);
+        return hurt;
+    }
+    *///?}
+
+    /** damage 覆写的共用尾巴（脱战计时 + 被玩家打的反应），两版签名汇到这里。 */
+    private void afterDamage(net.minecraft.entity.damage.DamageSource source, boolean hurt) {
         if (hurt) {
             // 自然回血的脱战计时从「最后一次真受伤」重新起算。
             this.lastHurtAge = this.age;
@@ -734,7 +779,6 @@ public class MeidoEntity extends PathAwareEntity {
             this.addFavor(-10, attacker);
             this.onAttackedByPlayer(attacker);
         }
-        return hurt;
     }
 
     /** 好感度档位：3=极高(≥90) / 2=高(≥70) / 1=中(≥30) / 0=低。阈值设计稿 A4-4，可调。 */
@@ -778,7 +822,7 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 当前是第几个游戏日（{@code getTime()/24000}）。{@code getTime} 是世界总时间，不随 /time set 回跳。 */
     private long currentGameDay() {
-        return this.getWorld().getTime() / 24000L;
+        return MeidoCompat.worldOf(this).getTime() / 24000L;
     }
 
     /**
@@ -808,13 +852,13 @@ public class MeidoEntity extends PathAwareEntity {
                 // 高档：先硬扛；掉到残血线（25%）才逃。damage() 走到这里时血已扣完，
                 // 所以直接看当前血量。
                 if (this.getHealth() <= this.getMaxHealth() * 0.25f) {
-                    this.startFleeing(attacker.getPos());
+                    this.startFleeing(MeidoCompat.posOf(attacker));
                 } else {
                     MeidoChat.say(this, MeidoLocale.pick("……我、我不还手。别生气了好不好。",
                             "…I won't fight back. Please don't be mad."));
                 }
             }
-            case 1 -> this.startFleeing(attacker.getPos());
+            case 1 -> this.startFleeing(MeidoCompat.posOf(attacker));
             default -> {
                 if (hasWeapon) {
                     this.retaliateTarget = attacker;
@@ -823,7 +867,7 @@ public class MeidoEntity extends PathAwareEntity {
                     MeidoChat.say(this, MeidoLocale.pick("……够了。你也别怪我不客气。",
                             "…That's enough. Don't blame me for what happens next."));
                 } else {
-                    this.startFleeing(attacker.getPos());
+                    this.startFleeing(MeidoCompat.posOf(attacker));
                 }
             }
         }
@@ -841,7 +885,7 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 逃跑的方向参考点：从她指向这个点的反方向跑。 */
     public Vec3d fleeFromPos() {
-        return this.fleeFromPos == null ? this.getPos() : this.fleeFromPos;
+        return this.fleeFromPos == null ? MeidoCompat.posOf(this) : this.fleeFromPos;
     }
 
     public boolean isRetaliating() {
@@ -871,7 +915,7 @@ public class MeidoEntity extends PathAwareEntity {
             return;
         }
         this.chunkTicketTimer = 0;
-        if (!(this.getWorld() instanceof ServerWorld world)) {
+        if (!(MeidoCompat.worldOf(this) instanceof ServerWorld world)) {
             return;
         }
         ChunkPos center = new ChunkPos(this.getBlockPos());
@@ -886,14 +930,22 @@ public class MeidoEntity extends PathAwareEntity {
         // 撤掉不再需要的
         for (long held : this.heldChunkTickets.toLongArray()) {
             if (!wanted.contains(held)) {
-                chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level, Unit.INSTANCE);
+                //? if >=1.21.11 {
+                chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level);
+                //?} else {
+                /*chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level, Unit.INSTANCE);
+                *///?}
                 this.heldChunkTickets.remove(held);
             }
         }
         // 挂上还缺的
         for (long want : wanted.toLongArray()) {
             if (!this.heldChunkTickets.contains(want)) {
-                chunks.addTicket(LOAD_TICKET, new ChunkPos(want), level, Unit.INSTANCE);
+                //? if >=1.21.11 {
+                chunks.addTicket(LOAD_TICKET, new ChunkPos(want), level);
+                //?} else {
+                /*chunks.addTicket(LOAD_TICKET, new ChunkPos(want), level, Unit.INSTANCE);
+                *///?}
                 this.heldChunkTickets.add(want);
             }
         }
@@ -901,13 +953,17 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 她被杀/被清除/区块随她卸载时，把自己挂的票全撤掉，不给世界留幽灵加载。 */
     private void removeChunkTickets() {
-        if (!(this.getWorld() instanceof ServerWorld world)) {
+        if (!(MeidoCompat.worldOf(this) instanceof ServerWorld world)) {
             return;
         }
         ServerChunkManager chunks = world.getChunkManager();
         int level = ChunkLevels.getLevelFromType(ChunkLevelType.FULL);
         for (long held : this.heldChunkTickets.toLongArray()) {
-            chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level, Unit.INSTANCE);
+            //? if >=1.21.11 {
+            chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level);
+            //?} else {
+            /*chunks.removeTicket(LOAD_TICKET, new ChunkPos(held), level, Unit.INSTANCE);
+            *///?}
         }
         this.heldChunkTickets.clear();
     }
@@ -1022,10 +1078,10 @@ public class MeidoEntity extends PathAwareEntity {
 
         // ★ 干活前先确认「脚边还有水」。水被填了 / 她站的地方被挖了，
         //   就该重新找一块，而不是对着空气甩一辈子竿。
-        Optional<BlockPos> water = MeidoWorkSpots.findWaterNear(this.getWorld(), post, MeidoWorkSpots.WORK_RADIUS);
+        Optional<BlockPos> water = MeidoWorkSpots.findWaterNear(MeidoCompat.worldOf(this), post, MeidoWorkSpots.WORK_RADIUS);
         if (water.isEmpty()) {
             // 自愈用更小的半径重找（8 格会把她带到别的池塘去，那就不是「这片水」了）。
-            Optional<BlockPos> again = MeidoWorkSpots.resolveFishingSpot(this.getWorld(), post, 6);
+            Optional<BlockPos> again = MeidoWorkSpots.resolveFishingSpot(MeidoCompat.worldOf(this), post, 6);
             if (again.isEmpty()) {
                 this.endMission(MeidoLocale.pick("钓鱼干不下去了：附近没有可以下钩的水面了",
                         "Can't fish anymore: there's no water nearby to cast a line into"));
@@ -1048,7 +1104,7 @@ public class MeidoEntity extends PathAwareEntity {
             // 等待时间照抄原版：nextInt(100, 600) 减去「饵钓」的缩减量。
             // （javap 过 FishingRodItem.use：原版就是 getFishingTimeReduction(...) * 20f 取整。）
             int wait = FISH_WAIT_MIN + this.getRandom().nextInt(FISH_WAIT_RANDOM);
-            if (this.getWorld() instanceof ServerWorld serverWorld) {
+            if (MeidoCompat.worldOf(this) instanceof ServerWorld serverWorld) {
                 wait -= (int) (EnchantmentHelper.getFishingTimeReduction(serverWorld, rod, this) * 20.0f);
             }
             this.fishWaitTicks = Math.max(1, wait);
@@ -1074,7 +1130,7 @@ public class MeidoEntity extends PathAwareEntity {
      * luck 越高，战利品表里「宝藏」支的权重越大、垃圾支越小，和玩家自己钓完全同一条公式。
      */
     private void reelIn(BlockPos water) {
-        if (!(this.getWorld() instanceof ServerWorld serverWorld)) {
+        if (!(MeidoCompat.worldOf(this) instanceof ServerWorld serverWorld)) {
             return;
         }
         this.swingHand(Hand.MAIN_HAND);
@@ -1086,13 +1142,25 @@ public class MeidoEntity extends PathAwareEntity {
             rod = new ItemStack(Items.FISHING_ROD);
         }
         LootTable table = serverWorld.getServer().getReloadableRegistries().getLootTable(LootTables.FISHING_GAMEPLAY);
-        LootContextParameterSet params = new LootContextParameterSet.Builder(serverWorld)
+        // 1.21.11 改名 LootWorldContext（Builder 方法面一致，javap 核实）。
+        // ★ 分支必须整条语句复制 —— stonecutter 不支持把标记切在未完成表达式的中间。
+        //? if >=1.21.11 {
+        LootWorldContext params = new LootWorldContext.Builder(serverWorld)
                 .add(LootContextParameters.ORIGIN, Vec3d.ofCenter(water))
                 // ★ TOOL 传她那根真竿：战利品表 / 未来的条件都会看到真实附魔。
                 .add(LootContextParameters.TOOL, rod)
                 .addOptional(LootContextParameters.THIS_ENTITY, this)
                 .luck(EnchantmentHelper.getFishingLuckBonus(serverWorld, rod, this))
                 .build(LootContextTypes.FISHING);
+        //?} else {
+        /*LootContextParameterSet params = new LootContextParameterSet.Builder(serverWorld)
+                .add(LootContextParameters.ORIGIN, Vec3d.ofCenter(water))
+                // ★ TOOL 传她那根真竿：战利品表 / 未来的条件都会看到真实附魔。
+                .add(LootContextParameters.TOOL, rod)
+                .addOptional(LootContextParameters.THIS_ENTITY, this)
+                .luck(EnchantmentHelper.getFishingLuckBonus(serverWorld, rod, this))
+                .build(LootContextTypes.FISHING);
+        *///?}
 
         ItemStack first = ItemStack.EMPTY;
         for (ItemStack loot : table.generateLoot(params)) {
@@ -1112,7 +1180,7 @@ public class MeidoEntity extends PathAwareEntity {
     }
 
     private void spawnFishingParticles(BlockPos water, boolean splash) {
-        if (!(this.getWorld() instanceof ServerWorld serverWorld)) {
+        if (!(MeidoCompat.worldOf(this) instanceof ServerWorld serverWorld)) {
             return;
         }
         serverWorld.spawnParticles(
@@ -1180,7 +1248,7 @@ public class MeidoEntity extends PathAwareEntity {
         this.equipStack(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
         ItemStack leftover = this.inventory.add(hand);
         if (!leftover.isEmpty()) {
-            this.dropStack(leftover);
+            MeidoCompat.dropStack(this, leftover);
         }
     }
 
@@ -1241,7 +1309,7 @@ public class MeidoEntity extends PathAwareEntity {
         this.equipStack(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
         ItemStack leftover = this.inventory.add(hand);
         if (!leftover.isEmpty()) {
-            this.dropStack(leftover);
+            MeidoCompat.dropStack(this, leftover);
         }
     }
 
@@ -1296,9 +1364,9 @@ public class MeidoEntity extends PathAwareEntity {
         }
         // 自愈：地没了（被挖了 / 被踩了）就重新找一块，都找不到才认输。
         //（isFarmPlot 把「种了东西的耕地」也算在内，所以 plot 为空 = 方圆内压根没有耕地。）
-        Optional<BlockPos> plot = MeidoWorkSpots.findFarmPlotNear(this.getWorld(), post, MeidoWorkSpots.WORK_RADIUS);
+        Optional<BlockPos> plot = MeidoWorkSpots.findFarmPlotNear(MeidoCompat.worldOf(this), post, MeidoWorkSpots.WORK_RADIUS);
         if (plot.isEmpty()) {
-            Optional<BlockPos> again = MeidoWorkSpots.resolveFarmSpot(this.getWorld(), post);
+            Optional<BlockPos> again = MeidoWorkSpots.resolveFarmSpot(MeidoCompat.worldOf(this), post);
             if (again.isEmpty()) {
                 this.endMission(MeidoLocale.pick(
                         "种植干不下去了：附近没有能种的耕地了（要先翻地，而且得有光照）",
@@ -1312,7 +1380,7 @@ public class MeidoEntity extends PathAwareEntity {
         //   地里只要还有长着的作物（哪怕没熟），熟了就能收、收了掉种子，循环还续得上。
         //   两者皆无才是死局。
         if (!this.hasPlantableSeeds()
-                && !MeidoWorkSpots.hasCropNear(this.getWorld(), post, MeidoWorkSpots.WORK_RADIUS)) {
+                && !MeidoWorkSpots.hasCropNear(MeidoCompat.worldOf(this), post, MeidoWorkSpots.WORK_RADIUS)) {
             this.endMission(MeidoLocale.pick(
                     "种植干不下去了：她包里没有能种的东西了（Q 扔给她一些小麦种子或地狱疣）",
                     "Can't farm anymore: she has nothing to plant (press Q to drop her some wheat seeds or nether wart)"));
@@ -1324,7 +1392,7 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 把脚下周围看一圈：熟了的收、空地按土质种（耕地 → 小麦，灵魂沙 → 地狱疣）。 */
     private void workFarming(BlockPos post) {
-        World world = this.getWorld();
+        World world = MeidoCompat.worldOf(this);
         int radius = MeidoWorkSpots.WORK_RADIUS;
         int acted = 0;
         for (int dy = -1; dy <= 1; dy++) {
@@ -1377,7 +1445,7 @@ public class MeidoEntity extends PathAwareEntity {
      * 包里刚好没有就不补 —— 空地留着，她下个扫描周期有种子了再种。
      */
     private void harvestCrop(BlockPos pos) {
-        World world = this.getWorld();
+        World world = MeidoCompat.worldOf(this);
         if (world.isClient()) {
             return;
         }
@@ -1502,7 +1570,7 @@ public class MeidoEntity extends PathAwareEntity {
 
         UUID dispatcher = this.mission.dispatchedBy();
         this.mission.setDispatchedBy(null);
-        if (dispatcher == null || !(this.getWorld() instanceof ServerWorld serverWorld)) {
+        if (dispatcher == null || !(MeidoCompat.worldOf(this) instanceof ServerWorld serverWorld)) {
             return;
         }
         ServerPlayerEntity player = serverWorld.getServer().getPlayerManager().getPlayer(dispatcher);
@@ -1545,7 +1613,7 @@ public class MeidoEntity extends PathAwareEntity {
         if (hand != Hand.MAIN_HAND) {
             return ActionResult.PASS;
         }
-        if (this.getWorld().isClient()) {
+        if (MeidoCompat.worldOf(this).isClient()) {
             // 客户端只负责「这一下算用掉了」，真正的逻辑交给服务端，避免双端各跑一遍。
             return ActionResult.SUCCESS;
         }
@@ -1639,12 +1707,12 @@ public class MeidoEntity extends PathAwareEntity {
         if (id == null) {
             return null;
         }
-        MinecraftServer server = this.getWorld().getServer();
+        MinecraftServer server = MeidoCompat.worldOf(this).getServer();
         if (server == null) {
             return null;
         }
         ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
-        if (player == null || player.isRemoved() || player.getWorld() != this.getWorld()) {
+        if (player == null || player.isRemoved() || MeidoCompat.worldOf(player) != MeidoCompat.worldOf(this)) {
             return null;
         }
         return player;
@@ -1652,7 +1720,7 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 现在是原版意义上的「夜里」吗（跟玩家能上床的窗口同一判据）。 */
     public boolean isNightNow() {
-        long timeOfDay = this.getWorld().getTimeOfDay() % 24000L;
+        long timeOfDay = MeidoCompat.worldOf(this).getTimeOfDay() % 24000L;
         return timeOfDay >= NIGHT_FROM && timeOfDay <= NIGHT_TO;
     }
 
@@ -1777,7 +1845,7 @@ public class MeidoEntity extends PathAwareEntity {
 
     /** 跨小时就把本小时次数清零。用 {@code getTime()/1000}：不随 /time set 回跳（防刷）。 */
     private void refreshProactiveHour() {
-        long hour = this.getWorld().getTime() / 1000L;
+        long hour = MeidoCompat.worldOf(this).getTime() / 1000L;
         if (this.proactiveHour != hour) {
             this.proactiveHour = hour;
             this.proactiveCount = 0;
@@ -1851,12 +1919,12 @@ public class MeidoEntity extends PathAwareEntity {
         if (this.interactPlayer == null) {
             return null;
         }
-        MinecraftServer server = this.getWorld().getServer();
+        MinecraftServer server = MeidoCompat.worldOf(this).getServer();
         if (server == null) {
             return null;
         }
         ServerPlayerEntity player = server.getPlayerManager().getPlayer(this.interactPlayer);
-        if (player == null || player.isRemoved() || player.getWorld() != this.getWorld()) {
+        if (player == null || player.isRemoved() || MeidoCompat.worldOf(player) != MeidoCompat.worldOf(this)) {
             return null;
         }
         return player.squaredDistanceTo(this) <= PICKUP_RANGE * PICKUP_RANGE ? player : null;
@@ -1970,12 +2038,15 @@ public class MeidoEntity extends PathAwareEntity {
      * {@code armorItem.getSlotType() == 所在槽位}，不一致就<b>默默不画</b>。
      */
     private static EquipmentSlot armorSlotOf(ItemStack stack) {
-        Equipment equipment = Equipment.fromStack(stack);
-        if (equipment == null) {
+        EquipmentSlot slot = MeidoCompat.equipmentSlotOf(stack);
+        if (slot == null) {
             return null;
         }
-        EquipmentSlot slot = equipment.getSlotType();
-        return slot.isArmorSlot() ? slot : null;
+        // 不用 isArmorSlot()（1.21.11 行为未核实），直接白名单四个护甲槽 —— 语义等价且两版一致。
+        return switch (slot) {
+            case FEET, LEGS, CHEST, HEAD -> slot;
+            default -> null;
+        };
     }
 
     /** 装备 1 个到 slot，把原来在那个槽的东西退回背包。 */
@@ -2012,7 +2083,7 @@ public class MeidoEntity extends PathAwareEntity {
             return AcceptResult.STORED;
         }
         stack.setCount(0);
-        this.dropStack(leftover);
+        MeidoCompat.dropStack(this, leftover);
         return AcceptResult.OVERFLOW;
     }
 
@@ -2025,7 +2096,7 @@ public class MeidoEntity extends PathAwareEntity {
                 continue;
             }
             count += stack.getCount();
-            this.dropStack(stack);
+            MeidoCompat.dropStack(this, stack);
         }
         return count;
     }
@@ -2136,7 +2207,7 @@ public class MeidoEntity extends PathAwareEntity {
         // ★ 翻译「你点的那一格」。模式不需要位置时原样返回，所以这里不用再分情况。
         BlockPos spot = target;
         if (def.usesTarget() && target != null) {
-            Optional<BlockPos> resolved = MeidoWorkSpots.resolveSpot(def.type(), this.getWorld(), target);
+            Optional<BlockPos> resolved = MeidoWorkSpots.resolveSpot(def.type(), MeidoCompat.worldOf(this), target);
             if (resolved.isEmpty()) {
                 return Assignment.failed(MeidoWorkSpots.failureHint(def.type(), def.name()));
             }
@@ -2211,7 +2282,107 @@ public class MeidoEntity extends PathAwareEntity {
     // 存档
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // 存档（1.21.11：实体存档走 WriteView / ReadView —— javap 实锤
+    // Entity.writeCustomData(WriteView) / readCustomData(ReadView) 为抽象方法；
+    // 1.21.1 分支保留原 NbtCompound 版本，见下方 else 块）
+    // ------------------------------------------------------------------
+    //? if >=1.21.11 {
+
+    /** 对话历史单条（role + text）。列表走 codec，与 {@code getListAppender} 配套。 */
+    private static final Codec<String[]> HISTORY_ENTRY_CODEC = RecordCodecBuilder.create(instance ->
+            instance.group(
+                    Codec.STRING.fieldOf("Role").forGetter(e -> e[0]),
+                    Codec.STRING.fieldOf("Text").forGetter(e -> e[1])
+            ).apply(instance, (role, text) -> new String[] { role, text }));
+
     @Override
+    protected void writeCustomData(WriteView view) {
+        super.writeCustomData(view);
+        view.putString("MeidoSkin", this.getSkin().getId());
+        view.putInt("MeidoColor", this.getMeidoColor().ordinal());
+        view.putString("MeidoNickname", this.getNickname());
+        view.putInt("MeidoFavor", this.favor);
+        view.putLong("MeidoFavorPickupDay", this.lastFavorPickupDay);
+        view.putLong("MeidoFavorChatDay", this.lastFavorChatDay);
+        this.mission.writeView(view);
+        // 物品组件要 registry 才能序列化，实体自己的 registryManager 就够。
+        this.inventory.writeView(view, this.getRegistryManager());
+        // 三期：对话历史 + 记忆摘要随存档走 —— 重启之后她还认得你（她说的）。
+        WriteView.ListAppender<String[]> history = view.getListAppender("MeidoHistory", HISTORY_ENTRY_CODEC);
+        synchronized (this.aiHistory) {
+            for (String[] entry : this.aiHistory) {
+                history.add(entry);
+            }
+        }
+        view.putString("MeidoAiSummary", this.aiSummary);
+        // 主动搭话：创建人 + 本小时已说几次 + 最近说过的话（防重复）。
+        // putNullable：ownerUuid 为 null 时整键不写，和旧版「没创建人就什么都不放」一致。
+        // ★ 用 INT_STREAM_CODEC 而不是 Uuids.CODEC：后者是字符串版，
+        //   NBT 里会写成字符串；而 1.21.1 的 putUuid / summon 手写 NBT / 旧存档
+        //   全是 [I;a,b,c,d] 的 int 数组 —— 无头冒烟 2026-09-21 实锤往返失败。
+        view.putNullable("MeidoOwner", Uuids.INT_STREAM_CODEC, this.ownerUuid);
+        view.putLong("MeidoProactiveHour", this.proactiveHour);
+        view.putInt("MeidoProactiveCount", this.proactiveCount);
+        WriteView.ListAppender<String> said = view.getListAppender("MeidoProactiveSaid", Codec.STRING);
+        synchronized (this.proactiveSaid) {
+            for (String line : this.proactiveSaid) {
+                said.add(line);
+            }
+        }
+    }
+
+    @Override
+    protected void readCustomData(ReadView view) {
+        super.readCustomData(view);
+        // 必须在 super 之后：super 会用存档里的旧属性覆盖注册默认值。
+        this.applyDesignAttributes();
+        view.getOptionalString("MeidoSkin").ifPresent(id -> this.setSkin(MeidoSkin.fromId(id)));
+        view.getOptionalInt("MeidoColor").ifPresent(ord -> this.setMeidoColor(MeidoColor.byOrdinal(ord)));
+        this.inventory.readView(view, this.getRegistryManager());
+        this.readNickname(view.getOptionalString("MeidoNickname").orElse(null));
+        this.mission.readView(view);
+        // 好感度：老存档没有这个键 → 保持初始值 50（中档）。
+        view.getOptionalInt("MeidoFavor").ifPresent(v -> this.favor = MathHelper.clamp(v, 0, 100));
+        // 每日加分的天数标记：随存档走，重进存档不会把「今天已加过」刷成「没加过」。
+        view.getOptionalLong("MeidoFavorPickupDay").ifPresent(v -> this.lastFavorPickupDay = v);
+        view.getOptionalLong("MeidoFavorChatDay").ifPresent(v -> this.lastFavorChatDay = v);
+        // 老存档没有这几个键 → mission 保持默认（游走）；配置里删掉过某个模式 → 拉回游走。
+        if (this.mission.sanitize()) {
+            MyMeido.LOGGER.warn("[mymeido] saved mode id is no longer in config, falling back to {} (entity {})",
+                    this.mission.modeId(), this.getUuid());
+        }
+        // 三期：对话历史 + 记忆摘要。老存档没有 → 空历史/空摘要，行为不变。
+        // （旧版读前先验类型的口子，在这里由 codec 天然兜住：类型不对 = Optional.empty。）
+        view.getOptionalTypedListView("MeidoHistory", HISTORY_ENTRY_CODEC).ifPresent(history -> {
+            synchronized (this.aiHistory) {
+                this.aiHistory.clear();
+                for (String[] entry : history) {
+                    if ("user".equals(entry[0]) || "assistant".equals(entry[0])) {
+                        this.aiHistory.addLast(new String[] { entry[0], entry[1] });
+                    }
+                }
+            }
+        });
+        view.getOptionalString("MeidoAiSummary").ifPresent(s -> this.aiSummary = s);
+        // 主动搭话。老存档没有这几个键 → 没创建人（不搭话）、计时从头、没有历史台词。
+        view.read("MeidoOwner", Uuids.CODEC).ifPresent(uuid -> this.ownerUuid = uuid);
+        this.proactiveHour = view.getLong("MeidoProactiveHour", -1L);
+        this.proactiveCount = view.getInt("MeidoProactiveCount", 0);
+        view.getOptionalTypedListView("MeidoProactiveSaid", Codec.STRING).ifPresent(said -> {
+            synchronized (this.proactiveSaid) {
+                this.proactiveSaid.clear();
+                for (String line : said) {
+                    this.proactiveSaid.addLast(line);
+                }
+            }
+        });
+        this.applyMissionToTracker();
+        this.applyNameStyle();
+    }
+
+    //?} else {
+    /*@Override
     public void writeCustomDataToNbt(NbtCompound nbt) {
         super.writeCustomDataToNbt(nbt);
         nbt.putString("MeidoSkin", this.getSkin().getId());
@@ -2262,7 +2433,7 @@ public class MeidoEntity extends PathAwareEntity {
             this.setMeidoColor(MeidoColor.byOrdinal(nbt.getInt("MeidoColor")));
         }
         this.inventory.readNbt(nbt, this.getRegistryManager());
-        this.readNickname(nbt);
+        this.readNickname(nbt.contains("MeidoNickname") ? nbt.getString("MeidoNickname") : null);
         this.mission.readNbt(nbt);
         // 好感度：老存档没有这个键 → 保持初始值 50（中档）。
         if (nbt.contains("MeidoFavor")) {
@@ -2319,6 +2490,7 @@ public class MeidoEntity extends PathAwareEntity {
         this.applyMissionToTracker();
         this.applyNameStyle();
     }
+    *///?}
 
     /**
      * 读昵称，并兼容老存档。
@@ -2327,9 +2499,9 @@ public class MeidoEntity extends PathAwareEntity {
      * 所以这里补一条迁移：如果 CustomName 既不是当年写死的「女仆」、也不等于当前皮肤名，
      * 就说明玩家当年真的改过名，把它继承过来；否则留空，让它自动回落到皮肤名。
      */
-    private void readNickname(NbtCompound nbt) {
-        if (nbt.contains("MeidoNickname")) {
-            this.setNickname(nbt.getString("MeidoNickname"));
+    private void readNickname(String explicit) {
+        if (explicit != null && !explicit.isBlank()) {
+            this.setNickname(explicit);
             return;
         }
         Text custom = this.getCustomName();

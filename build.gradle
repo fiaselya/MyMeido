@@ -1,5 +1,7 @@
 plugins {
-    id 'fabric-loom' version '1.11.8'
+    // 1.14.x：接得住 1.21.1 与 1.21.11 两个节点（1.11 接不住 0.141+ 的 fabric-api
+    // javadoc intermediary 校验）；官方 Stonecutter 模板对这两个 MC 版本也用这条线
+    id 'fabric-loom' version '1.14.10'
     id 'maven-publish'
 }
 
@@ -40,6 +42,8 @@ loom {
 }
 
 repositories {
+    // ★ 阿里云镜像在前（本机直连 Maven Central 会 403）
+    maven { url = 'https://maven.aliyun.com/repository/public' }
     mavenCentral()
 }
 
@@ -52,8 +56,13 @@ dependencies {
 
 processResources {
     inputs.property "version", project.version
+    // ★ 多版本：fabric.mod.json 的 minecraft 依赖范围必须跟着节点走，
+    //   写死 1.21.1 的话 1.21.11 的 jar 会被 FabricLoader 判不兼容直接拒载。
+    //   build.gradle 是按节点求值的，stonecutter.current.version 即本节点 MC 版本。
+    inputs.property "mcversion", stonecutter.current.version
     filesMatching("fabric.mod.json") {
-        expand "version": inputs.properties.version
+        expand "version": inputs.properties.version,
+                "mcversion": inputs.properties.mcversion
     }
 }
 
@@ -107,4 +116,51 @@ tasks.register("deployMod") {
         }
         logger.lifecycle("已部署 ${jar.name}（${jar.length()} B）-> ${modsDir}")
     }
+}
+
+// ---------------------------------------------------------------------------
+// ★ stonecutter 0.9 源目录接线（2026-09-21 用探针 + 反编译插件字节码查实）：
+//
+// stonecutter 会在「比 build.gradle 求值更晚」的阶段重设每个版本节点的
+// srcDirs（连 afterEvaluate 里改的都会被它覆盖回去）：
+//   活动节点   -> [versions/<v>/src/<set>/java, 根 src/<set>/java]
+//                 —— 活动节点设计上就是 raw 编译根 src（stonecutter 的
+//                 「根 src 始终处于活动版本方言」模型，靠 IDE 插件 /
+//                 stonecutterSwitchTo 物理改写根 src 来维护）；
+//   非活动节点 -> [versions/<v>/src/<set>/java（不存在，javac 忽略）,
+//                 versions/<v>/build/generated/stonecutter/<set>/java]
+//
+// 我们是纯 CLI 工作流（无 IDE 插件），根 src 里两个版本的 //? 分支**同时在
+// 场**，活动节点 raw 编译必炸（实测 144 错）。所以必须在 stonecutter 接线
+// 之后再把源目录扳回来 —— afterEvaluate 不够晚，用 projectsEvaluated。
+//
+// 另外注意任务依赖：完整预处理输出由 :<v>:stonecutterGenerate 产出，
+// 不是 stonecutterPrepare —— 活动节点的 Prepare 只写增量缓存
+// stonecutter-cache/sources（只含带 //? 标记的文件），拿它当编译源
+// = 空目录编译（2026-09-21 实测，jar 仅 6.9KB、0 个 class）。
+//
+// 最终策略：所有节点一律只编 build/generated/stonecutter/<set>/java，
+// 且 compileJava / compileClientJava 显式 dependsOn stonecutterGenerate(Client)，
+// 保证 clean / CI 冷启动 / SwitchTo 换活动版本后行为都一致。
+// ---------------------------------------------------------------------------
+def nodeProject = project
+gradle.projectsEvaluated {
+    def ssNames = []
+    ['main', 'client'].each { ssName ->
+        def ss = nodeProject.sourceSets.findByName(ssName)
+        if (ss != null) {
+            def genDir = new File(nodeProject.projectDir, "build/generated/stonecutter/${ssName}/java")
+            ss.java.setSrcDirs([genDir])
+            ssNames << ssName
+        }
+    }
+    // sourcesJar 也会读 srcDirs（= 生成目录，是 stonecutterGenerate 的输出），
+    // 必须同样声明依赖，否则 Gradle 隐式依赖校验直接 fail（9.x 默认 error）。
+    nodeProject.tasks.matching {
+        it.name in ['compileJava', 'compileClientJava', 'sourcesJar']
+    }.configureEach {
+        dependsOn 'stonecutterGenerate', 'stonecutterGenerateClient'
+    }
+    nodeProject.logger.lifecycle("[mymeido] {} 节点编译源已固定为 stonecutter 生成目录: {}",
+            nodeProject.name, ssNames)
 }
